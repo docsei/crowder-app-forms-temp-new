@@ -18,6 +18,7 @@ import { Button } from "@/components/Button"
 import { Input } from "@/components/Input"
 import { Label } from "@/components/Label"
 import { getBrowserSupabase } from "@/adapters/supabase/client"
+import { safeNextPath } from "@/lib/safe-redirect"
 import { cx } from "@/lib/utils"
 
 type Mode = "magic" | "password"
@@ -92,7 +93,7 @@ function LoginInner() {
         setErrorMessage(mapAuthError(error.message, mode))
         return
       }
-      const next = searchParams.get("next") ?? "/"
+      const next = safeNextPath(searchParams.get("next"))
       window.location.assign(next)
       return
     }

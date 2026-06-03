@@ -35,3 +35,12 @@ export async function getCurrentUser() {
   } = await supabase.auth.getUser()
   return user
 }
+
+// Defensa en profundidad (CWE-862): el middleware ya redirige a /login sin
+// sesión, pero cada server action revalida la sesión en su propio límite para
+// no depender de una sola capa. Lanza si no hay usuario autenticado.
+export async function requireUser() {
+  const user = await getCurrentUser()
+  if (!user) throw new Error("unauthorized")
+  return user
+}

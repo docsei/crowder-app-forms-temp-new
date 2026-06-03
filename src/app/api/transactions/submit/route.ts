@@ -14,6 +14,15 @@ import { submitBatch } from "@/modules/submissions"
 
 export const dynamic = "force-dynamic"
 
+// Límites de tamaño (CWE-770): este endpoint es público por diseño — lo invoca
+// un comprador anónimo desde el iframe same-origin, sin credencial de usuario.
+// El check de Origin (requireAllowedOrigin) es protección anti-CSRF de
+// navegador, NO autenticación: un cliente no-navegador puede falsear el header.
+// Por eso acotamos el tamaño del batch para limitar el abuso de escrituras.
+const MAX_ITEMS = 200
+const MAX_SUBMISSIONS = 1_000
+const MAX_ANSWER_KEYS = 200
+
 const itemSchema = z.object({
   uuid: z.string().min(1),
   show: z.string(),
@@ -49,7 +58,7 @@ const contextSchema = z.object({
     })
     .nullable()
     .optional(),
-  items: z.array(itemSchema),
+  items: z.array(itemSchema).max(MAX_ITEMS),
 })
 
 const submissionSchema = z.object({
@@ -57,12 +66,16 @@ const submissionSchema = z.object({
   groupId: z.string().min(1),
   scope: z.enum(["transaction", "item"]),
   itemUuid: z.string().nullable().optional(),
-  answers: z.record(z.unknown()),
+  answers: z
+    .record(z.unknown())
+    .refine((a) => Object.keys(a).length <= MAX_ANSWER_KEYS, {
+      message: `too many answer keys (max ${MAX_ANSWER_KEYS})`,
+    }),
 })
 
 const bodySchema = z.object({
   context: contextSchema,
-  submissions: z.array(submissionSchema),
+  submissions: z.array(submissionSchema).max(MAX_SUBMISSIONS),
 })
 
 export async function POST(req: NextRequest) {

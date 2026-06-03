@@ -20,6 +20,10 @@ export function jsonDomainError(err: DomainError): NextResponse {
   return NextResponse.json(errorEnvelope(err), { status: statusForCode(err.code) })
 }
 
+// NOTA DE SEGURIDAD: el header `Origin` solo es de confianza en navegadores.
+// Un cliente no-navegador (curl, script) puede falsearlo, así que este check es
+// protección anti-CSRF de navegador, NO autenticación. No lo trates como
+// control de acceso fuerte para endpoints que escriben datos.
 export function requireAllowedOrigin(
   origin: string | null,
   allowedOrigins: readonly string[],

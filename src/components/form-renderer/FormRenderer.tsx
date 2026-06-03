@@ -236,6 +236,15 @@ function isFilledValue(v: unknown): boolean {
   return true
 }
 
+function RequiredMark({ required }: { required?: boolean }) {
+  if (!required) return null
+  return (
+    <span className="ml-1 text-destructive" aria-hidden>
+      *
+    </span>
+  )
+}
+
 function QuestionField({
   question,
   value,
@@ -276,6 +285,37 @@ function QuestionField({
     )
   }
 
+  // Consent: the checkbox already renders its label text alongside it, so
+  // we skip the title Label wrapper to avoid duplicating the question label.
+  if (question.type === "consent") {
+    return (
+      <div className={cx("space-y-2", embedFull && "sm:col-span-2")}>
+        <Field
+          id={id}
+          question={question}
+          value={value}
+          onChange={onChange}
+          onBlur={onBlur}
+          invalid={!!error}
+          variant={variant}
+        />
+        {question.help && (
+          <MarkdownLite
+            as="p"
+            className="text-xs text-muted-foreground"
+          >
+            {question.help}
+          </MarkdownLite>
+        )}
+        {error && (
+          <p className="text-xs text-destructive" role="alert">
+            {error}
+          </p>
+        )}
+      </div>
+    )
+  }
+
   // Embed variant: floating-label pattern for text-like fields and the
   // dropdown. Choice-style questions render below without the wrapper.
   if (variant === "embed" && FLOATING_LABEL_TYPES.has(question.type)) {
@@ -301,11 +341,7 @@ function QuestionField({
           className="text-foreground"
         >
           <MarkdownLite>{question.label}</MarkdownLite>
-          {question.required && (
-            <span className="ml-1 text-destructive" aria-hidden>
-              *
-            </span>
-          )}
+          <RequiredMark required={question.required} />
         </Label>
         {question.help && (
           <MarkdownLite
@@ -333,11 +369,7 @@ function QuestionField({
     <div className={cx("space-y-2", embedFull && "sm:col-span-2")}>
       <Label htmlFor={id} className="block text-sm text-foreground">
         <MarkdownLite>{question.label}</MarkdownLite>
-        {question.required && (
-          <span className="ml-1 text-destructive" aria-hidden>
-            *
-          </span>
-        )}
+        <RequiredMark required={question.required} />
       </Label>
       {question.help && (
         <MarkdownLite
@@ -603,9 +635,10 @@ function Field({
               onCheckedChange={(c) => onChange(c === true)}
               className="mt-0.5"
             />
-            <MarkdownLite as="span" className="leading-relaxed">
-              {question.label}
-            </MarkdownLite>
+            <span className="leading-relaxed">
+              <MarkdownLite as="span">{question.label}</MarkdownLite>
+              <RequiredMark required={question.required} />
+            </span>
           </label>
         )
       }
@@ -624,9 +657,10 @@ function Field({
             onCheckedChange={(c) => onChange(c === true)}
             className="mt-0.5"
           />
-          <MarkdownLite as="span" className="leading-relaxed">
-            {question.label}
-          </MarkdownLite>
+          <span className="leading-relaxed">
+            <MarkdownLite as="span">{question.label}</MarkdownLite>
+            <RequiredMark required={question.required} />
+          </span>
         </label>
       )
     }

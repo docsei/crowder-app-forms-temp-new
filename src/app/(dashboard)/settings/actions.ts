@@ -3,7 +3,7 @@
 import { randomBytes } from "crypto"
 import { revalidatePath } from "next/cache"
 
-import { getCurrentUser } from "@/adapters/supabase/server"
+import { requireUser } from "@/adapters/supabase/server"
 import { parseOriginsList } from "@/lib/origins"
 import { isValidHex } from "@/lib/theme"
 import { getConfig, updateConfig } from "@/modules/partner-config"
@@ -13,16 +13,11 @@ function generateApiKey(): string {
   return randomBytes(32).toString("base64url")
 }
 
-async function requireAuth() {
-  const user = await getCurrentUser()
-  if (!user) throw new Error("unauthorized")
-}
-
 export async function generateOrRotateKey(): Promise<{
   apiKey: string
   hasPrevious: boolean
 }> {
-  await requireAuth()
+  await requireUser()
   const current = await getConfig()
   const newKey = generateApiKey()
 
@@ -42,7 +37,7 @@ export async function generateOrRotateKey(): Promise<{
 }
 
 export async function clearPreviousKey(): Promise<void> {
-  await requireAuth()
+  await requireUser()
   const current = await getConfig()
   if (!current) return
   await updateConfig({ ...current, crowderApiKeyPrevious: null })
@@ -50,7 +45,7 @@ export async function clearPreviousKey(): Promise<void> {
 }
 
 export async function updateCurrencies(currencies: string[]): Promise<void> {
-  await requireAuth()
+  await requireUser()
   const current = await getConfig()
   if (!current) throw new Error("partner_config not initialized — generate an API key first")
   await updateConfig({
@@ -63,7 +58,7 @@ export async function updateCurrencies(currencies: string[]): Promise<void> {
 }
 
 export async function updateBrandPrimary(hex: string | null): Promise<void> {
-  await requireAuth()
+  await requireUser()
   const current = await getConfig()
   if (!current) throw new Error("partner_config not initialized — generate an API key first")
   const next = hex?.trim() || null
@@ -78,7 +73,7 @@ export async function updateBrandPrimary(hex: string | null): Promise<void> {
 export async function updateAllowedOrigins(
   origins: string[],
 ): Promise<{ ok: boolean; error?: string }> {
-  await requireAuth()
+  await requireUser()
   const current = await getConfig()
   if (!current) {
     return {
@@ -94,7 +89,7 @@ export async function updateAllowedOrigins(
 }
 
 export async function runExpireStale(): Promise<{ expired: number }> {
-  await requireAuth()
+  await requireUser()
   const expired = await expireStale()
   revalidatePath("/transactions")
   return { expired }

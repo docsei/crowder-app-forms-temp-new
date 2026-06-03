@@ -10,6 +10,7 @@ import {
   publishForm,
   updateForm,
 } from "@/modules/forms"
+import { requireUser } from "@/adapters/supabase/server"
 import { parseFormDefinition } from "@/lib/form-schema"
 import { DomainError } from "@/lib/errors"
 import { parseOriginsList } from "@/lib/origins"
@@ -27,6 +28,7 @@ export async function createFormAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
+  await requireUser()
   const parsed = newFormSchema.safeParse({
     title: formData.get("title"),
   })
@@ -58,6 +60,7 @@ export async function updateFormAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
+  await requireUser()
   const parsed = updateSchema.safeParse({
     title: formData.get("title"),
     enabled: formData.get("enabled") === "on",
@@ -108,6 +111,7 @@ export async function updateFormAction(
 }
 
 export async function publishFormAction(id: string): Promise<ActionResult> {
+  await requireUser()
   try {
     await publishForm(id)
   } catch (err) {
@@ -119,6 +123,7 @@ export async function publishFormAction(id: string): Promise<ActionResult> {
 }
 
 export async function deleteFormAction(id: string): Promise<void> {
+  await requireUser()
   await deleteForm(id)
   revalidatePath("/forms")
   redirect("/forms")
@@ -128,6 +133,7 @@ export async function updateAllowedOriginsAction(
   id: string,
   origins: string[],
 ): Promise<ActionResult> {
+  await requireUser()
   const parsed = parseOriginsList(origins)
   if (!parsed.ok) {
     return { ok: false, error: parsed.error }
@@ -145,6 +151,7 @@ export async function updateFormThemeAction(
   id: string,
   hex: string | null,
 ): Promise<ActionResult> {
+  await requireUser()
   const next = hex?.trim() || null
   if (next && !isValidHex(next)) {
     return { ok: false, error: "Color hex inválido" }

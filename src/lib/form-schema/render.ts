@@ -56,7 +56,7 @@ export function renderMarkdownLite(input: string): string {
     const [full, text, url] = m
     out += renderInline(input.slice(lastIndex, m.index))
     out += isSafeHttpsUrl(url)
-      ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${renderInline(text)}</a>`
+      ? `<a href="${escapeHtml(url)}" target="_top" rel="noopener noreferrer" class="underline underline-offset-2 hover:no-underline">${renderInline(text)}</a>`
       : renderInline(full)
     lastIndex = linkRe.lastIndex
   }
