@@ -5,7 +5,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { verifyBearer } from "@/adapters/crowder/auth"
 import { jsonError } from "@/lib/http"
 import { createLogger } from "@/lib/log"
-import { acceptedApiKeys } from "@/modules/partner-config"
+import { acceptedApiKeys } from "@/modules/api-keys"
 import { findById } from "@/modules/transactions"
 
 export const dynamic = "force-dynamic"

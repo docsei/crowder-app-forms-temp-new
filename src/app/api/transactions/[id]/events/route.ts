@@ -8,7 +8,7 @@ import { refundReasonEnum } from "@/lib/db/schema"
 import { DomainError, errorEnvelope, statusForCode } from "@/lib/errors"
 import { jsonError } from "@/lib/http"
 import { createLogger } from "@/lib/log"
-import { acceptedApiKeys } from "@/modules/partner-config"
+import { acceptedApiKeys } from "@/modules/api-keys"
 import { handle, logResult } from "@/modules/webhooks"
 
 export const dynamic = "force-dynamic"

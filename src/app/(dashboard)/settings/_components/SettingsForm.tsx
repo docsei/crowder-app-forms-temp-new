@@ -5,116 +5,36 @@ import { useState, useTransition } from "react"
 import { Button } from "@/components/Button"
 import { Card } from "@/components/Card"
 import { Input } from "@/components/Input"
-import { Label } from "@/components/Label"
 import { OriginsListEditor } from "@/components/OriginsListEditor"
-import { maskKey } from "@/lib/formatters"
 import { DEFAULT_BRAND_HEX } from "@/lib/theme"
 
 import {
-  clearPreviousKey,
-  generateOrRotateKey,
   runExpireStale,
   updateAllowedOrigins,
   updateBrandPrimary,
   updateCurrencies,
 } from "../actions"
+import { ApiKeysManager, type ApiKeyView } from "./ApiKeysManager"
 
 export function SettingsForm({
-  apiKey,
-  previousKey,
+  apiKeys,
   currencies,
   allowedOrigins,
   brandPrimary,
 }: {
-  apiKey: string | null
-  previousKey: string | null
+  apiKeys: ApiKeyView[]
   currencies: string[]
   allowedOrigins: string[]
   brandPrimary: string | null
 }) {
-  const [revealed, setRevealed] = useState(false)
   const [currenciesInput, setCurrenciesInput] = useState(currencies.join(", "))
   const [brandInput, setBrandInput] = useState(brandPrimary ?? DEFAULT_BRAND_HEX)
   const [pending, startTransition] = useTransition()
-  const [generated, setGenerated] = useState<string | null>(null)
   const [expireResult, setExpireResult] = useState<number | null>(null)
-
-  const masked = apiKey ? maskKey(apiKey) : null
 
   return (
     <div className="space-y-6">
-      <Card className="bg-background">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-foreground">
-              Crowder API Key
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              Bearer que Crowder envía en cada request. Rotala con doble-aceptación.
-            </p>
-          </div>
-          <Button
-            variant="secondary"
-            disabled={pending}
-            onClick={() =>
-              startTransition(async () => {
-                const res = await generateOrRotateKey()
-                setGenerated(res.apiKey)
-                setRevealed(true)
-              })
-            }
-          >
-            {apiKey ? "Rotar key" : "Generar key"}
-          </Button>
-        </div>
-
-        {apiKey ? (
-          <div className="mt-4 space-y-3">
-            <div>
-              <Label>Key actual</Label>
-              <p className="font-mono text-sm text-foreground">
-                {revealed ? (generated ?? apiKey) : masked}
-              </p>
-              {!revealed && (
-                <button
-                  type="button"
-                  className="mt-1 text-xs text-muted-foreground transition hover:text-foreground"
-                  onClick={() => setRevealed(true)}
-                >
-                  Mostrar
-                </button>
-              )}
-              {generated && (
-                <p className="mt-1 text-xs text-yellow-600 dark:text-yellow-400">
-                  Nueva key generada. Compartila con Crowder por canal cifrado.
-                  La key anterior sigue válida hasta que la limpies.
-                </p>
-              )}
-            </div>
-            {previousKey && (
-              <div>
-                <Label>Key anterior (válida durante la rotación)</Label>
-                <p className="font-mono text-sm text-muted-foreground">
-                  {maskKey(previousKey)}
-                </p>
-                <Button
-                  variant="secondary"
-                  className="mt-2"
-                  disabled={pending}
-                  onClick={() => startTransition(() => clearPreviousKey())}
-                >
-                  Limpiar key anterior
-                </Button>
-              </div>
-            )}
-          </div>
-        ) : (
-          <p className="mt-4 text-sm text-muted-foreground">
-            Aún no generaste una API key. Generala para empezar el onboarding
-            con Crowder.
-          </p>
-        )}
-      </Card>
+      <ApiKeysManager apiKeys={apiKeys} />
 
       <Card className="bg-background">
         <h2 className="text-sm font-semibold text-foreground">

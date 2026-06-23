@@ -45,8 +45,6 @@ export type FormTheme = PartnerTheme
 
 export const partnerConfig = pgTable("partner_config", {
   id: integer("id").primaryKey(),
-  crowderApiKey: text("crowder_api_key").notNull(),
-  crowderApiKeyPrevious: text("crowder_api_key_previous"),
   supportedCurrencies: jsonb("supported_currencies")
     .$type<string[]>()
     .notNull()
@@ -60,6 +58,32 @@ export const partnerConfig = pgTable("partner_config", {
     .notNull()
     .default(sql`'[]'::jsonb`),
   theme: jsonb("theme").$type<PartnerTheme>(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+})
+
+// API keys que Crowder presenta como Bearer en los webhooks server-to-server.
+// Relación uno-a-muchos: el partner puede tener varias keys con nombre, cada
+// una activable/desactivable y regenerable. Al regenerar, el secreto anterior
+// queda válido hasta `secretPreviousExpiresAt` (período de gracia) para no
+// romper integraciones en vivo. Secretos en texto plano (alta entropía, no
+// passwords) para poder mostrarlos en la UI, igual que el modelo anterior.
+export const apiKeys = pgTable("api_keys", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: text("name").notNull(),
+  secret: text("secret").notNull(),
+  secretPrevious: text("secret_previous"),
+  secretPreviousExpiresAt: timestamp("secret_previous_expires_at", {
+    withTimezone: true,
+  }),
+  active: boolean("active").notNull().default(true),
+  // Soft-delete: las keys eliminadas conservan la fila (auditoría, trazabilidad)
+  // pero se filtran de toda lectura y dejan de autenticar.
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

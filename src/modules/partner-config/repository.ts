@@ -7,8 +7,6 @@ export type { PartnerTheme }
 
 export type PartnerConfig = {
   id: number
-  crowderApiKey: string
-  crowderApiKeyPrevious: string | null
   supportedCurrencies: string[]
   protocolVersions: string[]
   allowedOrigins: string[]
@@ -26,8 +24,6 @@ export async function get(): Promise<PartnerConfig | null> {
 }
 
 export async function upsert(input: {
-  crowderApiKey: string
-  crowderApiKeyPrevious: string | null
   supportedCurrencies: string[]
   protocolVersions: string[]
   allowedOrigins?: string[]
