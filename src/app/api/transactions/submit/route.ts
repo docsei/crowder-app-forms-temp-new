@@ -148,7 +148,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { transactionId } = await submitBatch({
+    const { transactionId, partnerItems } = await submitBatch({
       context: parsed.data.context,
       submissions: parsed.data.submissions.map((s) => ({
         formId: s.formId,
@@ -161,7 +161,7 @@ export async function POST(req: NextRequest) {
     const body = {
       interaction: transactionId,
       currency: parsed.data.context.currency,
-      partnerItems: [],
+      partnerItems,
     }
     log.out(200, { body, payload: raw })
     return NextResponse.json(body)

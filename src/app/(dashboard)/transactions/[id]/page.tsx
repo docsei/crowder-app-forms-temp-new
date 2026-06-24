@@ -8,6 +8,15 @@ import { JsonBlock } from "@/components/dashboard/JsonBlock"
 import { StatusBadge } from "@/components/dashboard/StatusBadge"
 import { TabNav } from "@/components/dashboard/TabNav"
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeaderCell,
+  TableRoot,
+  TableRow,
+} from "@/components/Table"
+import {
   formatAnswer,
   formatGroupScope,
   formatTransactionStatus,
@@ -157,47 +166,46 @@ export default async function TransactionDetailPage({
       <div className="mt-4">
         {tab === "submissions" && (
           <Card className="bg-background p-0">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-border text-xs uppercase text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Form</th>
-                  <th className="px-4 py-3 font-medium">Grupo</th>
-                  <th className="px-4 py-3 font-medium">Scope</th>
-                  <th className="px-4 py-3 font-medium">Item</th>
-                  <th className="px-4 py-3 font-medium">Label</th>
-                </tr>
-              </thead>
-              <tbody>
-                {subs.map((s) => (
-                  <tr
-                    key={s.id}
-                    className="border-b border-border last:border-0"
-                  >
-                    <td className="px-4 py-3 text-secondary-foreground">
-                      {formTitleById.get(s.formId) ?? s.formId}
-                      <p className="font-mono text-xs text-muted-foreground">
-                        {s.formId} · v{s.formVersion}
-                      </p>
-                    </td>
-                    <td className="px-4 py-3 font-mono text-xs text-secondary-foreground">
-                      {s.groupId}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {formatGroupScope(s.scope)}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{itemLabel(s)}</td>
-                    <td className="px-4 py-3 text-foreground">{s.computedLabel}</td>
-                  </tr>
-                ))}
-                {subs.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-sm text-muted-foreground">
-                      Sin submissions.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+            <TableRoot>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableHeaderCell>Form</TableHeaderCell>
+                    <TableHeaderCell>Grupo</TableHeaderCell>
+                    <TableHeaderCell>Scope</TableHeaderCell>
+                    <TableHeaderCell>Item</TableHeaderCell>
+                    <TableHeaderCell>Label</TableHeaderCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {subs.map((s) => (
+                    <TableRow key={s.id}>
+                      <TableCell className="text-secondary-foreground">
+                        {formTitleById.get(s.formId) ?? s.formId}
+                        <p className="font-mono text-xs text-muted-foreground">
+                          {s.formId} · v{s.formVersion}
+                        </p>
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-secondary-foreground">
+                        {s.groupId}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {formatGroupScope(s.scope)}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">{itemLabel(s)}</TableCell>
+                      <TableCell className="text-foreground">{s.computedLabel}</TableCell>
+                    </TableRow>
+                  ))}
+                  {subs.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                        Sin submissions.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableRoot>
           </Card>
         )}
 
@@ -227,46 +235,45 @@ export default async function TransactionDetailPage({
 
         {tab === "items" && (
           <Card className="bg-background p-0">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-border text-xs uppercase text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-3 font-medium">UUID</th>
-                  <th className="px-4 py-3 font-medium">Holder</th>
-                  <th className="px-4 py-3 font-medium">Sector / rate</th>
-                  <th className="px-4 py-3 font-medium">Show</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...itemsByUuid.values()].map((it) => (
-                  <tr
-                    key={it.uuid}
-                    className="border-b border-border last:border-0"
-                  >
-                    <td className="px-4 py-3 font-mono text-xs text-secondary-foreground">
-                      {it.uuid}
-                    </td>
-                    <td className="px-4 py-3 text-foreground">
-                      {it.holder
-                        ? `${it.holder.firstName} ${it.holder.lastName}`
-                        : "—"}
-                    </td>
-                    <td className="px-4 py-3 text-secondary-foreground">
-                      {it.sectorName} · {it.rateName}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">
-                      {it.show}
-                    </td>
-                  </tr>
-                ))}
-                {itemsByUuid.size === 0 && (
-                  <tr>
-                    <td colSpan={4} className="px-4 py-8 text-center text-sm text-muted-foreground">
-                      Sin items.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+            <TableRoot>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableHeaderCell>UUID</TableHeaderCell>
+                    <TableHeaderCell>Holder</TableHeaderCell>
+                    <TableHeaderCell>Sector / rate</TableHeaderCell>
+                    <TableHeaderCell>Show</TableHeaderCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {[...itemsByUuid.values()].map((it) => (
+                    <TableRow key={it.uuid}>
+                      <TableCell className="font-mono text-xs text-secondary-foreground">
+                        {it.uuid}
+                      </TableCell>
+                      <TableCell className="text-foreground">
+                        {it.holder
+                          ? `${it.holder.firstName} ${it.holder.lastName}`
+                          : "—"}
+                      </TableCell>
+                      <TableCell className="text-secondary-foreground">
+                        {it.sectorName} · {it.rateName}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {it.show}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {itemsByUuid.size === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={4} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                        Sin items.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableRoot>
           </Card>
         )}
 

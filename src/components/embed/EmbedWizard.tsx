@@ -11,6 +11,16 @@ import {
   answersSchemaForGroup,
   groupHasRequiredQuestion,
 } from "@/lib/form-schema/validate"
+import type { PartnerItem, ProductPick } from "@/lib/db/schema"
+import {
+  derivePartnerItems,
+  isProductPick,
+  toPicks,
+  type ProductAnswerSource,
+  type ProductForDerive,
+} from "@/lib/products/derive"
+import { formatPrice } from "@/lib/products/format"
+import type { ProductLists, RenderProduct } from "@/lib/products/types"
 import { cx } from "@/lib/utils"
 
 import type {
@@ -31,6 +41,8 @@ import {
 type Props = {
   forms: PublishedForm[]
   supportedCurrencies: string[]
+  // Listados resueltos de las preguntas `product`, clave `${formId}::${questionId}`.
+  productLists?: ProductLists
   parentOrigins: string[]
   formIdForDiagnostics?: string
   // When set, the wizard skips the postMessage handshake and renders against
@@ -68,9 +80,10 @@ export function EmbedWizard(props: Props) {
   const rootRef = useRef<HTMLDivElement | null>(null)
   const lastHeightRef = useRef(0)
   const onParentSubmitRef = useRef<(() => void) | null>(null)
-  // Idempotency guard for the selected/cleared handshake — flipped only on
-  // transitions, never during steady state.
-  const selectedEmittedRef = useRef(false)
+  // Firma de los últimos partnerItems emitidos en `selected` (para re-emitir
+  // solo cuando la selección cambia). `null` = aún no se emitió `selected`, lo
+  // que también hace de guardia idempotente para el handshake selected/cleared.
+  const selectedSigRef = useRef<string | null>(null)
 
   const emit = useCallback(
     (message: Record<string, unknown>) => {
@@ -97,15 +110,23 @@ export function EmbedWizard(props: Props) {
     [emit],
   )
 
-  const emitSelectedOnce = useCallback(() => {
-    if (selectedEmittedRef.current) return
-    selectedEmittedRef.current = true
-    emit({ type: "interaction", status: "selected", partnerItems: [] })
-  }, [emit])
+  // Emite `selected` con los partnerItems derivados. Re-emite cuando cambian
+  // (p. ej. el fan agrega/saca un producto) para que el parent recalcule el
+  // total; deduplica por firma para no spamear emisiones idénticas. Para forms
+  // sin productos los items van [] y se emite una sola vez (igual que antes).
+  const emitSelected = useCallback(
+    (partnerItems: PartnerItem[]) => {
+      const sig = JSON.stringify(partnerItems)
+      if (selectedSigRef.current === sig) return
+      selectedSigRef.current = sig
+      emit({ type: "interaction", status: "selected", partnerItems })
+    },
+    [emit],
+  )
 
   const emitClearedAfterSelected = useCallback(() => {
-    if (!selectedEmittedRef.current) return
-    selectedEmittedRef.current = false
+    if (selectedSigRef.current === null) return
+    selectedSigRef.current = null
     emit({ type: "interaction", status: "cleared" })
   }, [emit])
 
@@ -161,7 +182,7 @@ export function EmbedWizard(props: Props) {
       setAnswers({})
       setServerErrors([])
       setSubmitError(null)
-      selectedEmittedRef.current = false
+      selectedSigRef.current = null
       setPhase({ kind: "ready", steps, ctx })
     },
     [failFatal, props.forms, props.supportedCurrencies],
@@ -318,6 +339,41 @@ export function EmbedWizard(props: Props) {
       }))
   }
 
+  // Deriva los partnerItems del preview con la MISMA función pura del servidor
+  // (definition sección 9.8). El servidor es autoritativo en precio al submitear; acá
+  // es solo para que el parent muestre el total. Usa los listados resueltos
+  // (props.productLists) como lookup.
+  function buildPartnerItems(
+    activeSteps: WizardStep[],
+    currency: string,
+  ): PartnerItem[] {
+    if (!props.productLists) return []
+    const lookup = new Map<string, ProductForDerive>()
+    for (const list of Object.values(props.productLists)) {
+      for (const p of list) lookup.set(p.id, p)
+    }
+    const sources: ProductAnswerSource[] = []
+    for (const s of activeSteps) {
+      if (s.kind !== "group") continue
+      const stepAnswers = answers[s.stepId] ?? {}
+      for (const q of s.group.questions) {
+        if (q.type !== "product") continue
+        const picks = toPicks(stepAnswers[q.id])
+        if (picks.length === 0) continue
+        sources.push({
+          formId: s.formId,
+          groupId: s.group.id,
+          itemUuid: s.item?.uuid ?? null,
+          questionId: q.id,
+          picks,
+        })
+      }
+    }
+    if (sources.length === 0) return []
+    // En el preview ignoramos los errores (el guard autoritativo corre en submit).
+    return derivePartnerItems(sources, lookup, currency).items
+  }
+
   const findIncompleteStepIndex = useCallback(
     (activeSteps: WizardStep[]): number => {
       for (let i = 0; i < activeSteps.length; i++) {
@@ -364,8 +420,8 @@ export function EmbedWizard(props: Props) {
 
     setSubmitting(true)
     // Defensive: covers a race where `submit` arrives before the readiness
-    // effect has had a chance to fire. Idempotent via the ref.
-    emitSelectedOnce()
+    // effect has had a chance to fire. Idempotent via la firma.
+    emitSelected(buildPartnerItems(p.steps, p.ctx.currency))
 
     // Preview mode: never POST to the real submissions endpoint. Pretend the
     // round-trip succeeded so the user can see the "done" state.
@@ -420,6 +476,8 @@ export function EmbedWizard(props: Props) {
         status: "submitted" as const,
         interaction: body.interaction,
         currency: p.ctx.currency,
+        // Items autoritativos que devolvió el servidor (definition sección 9.7).
+        partnerItems: body.partnerItems ?? [],
       }
       emit(message)
       setPhase({ kind: "done" })
@@ -457,13 +515,18 @@ export function EmbedWizard(props: Props) {
   useEffect(() => {
     if (phase.kind !== "ready") return
     if (submitting) return
-    if (findIncompleteStepIndex(phase.steps) === -1) emitSelectedOnce()
+    if (findIncompleteStepIndex(phase.steps) === -1)
+      emitSelected(buildPartnerItems(phase.steps, phase.ctx.currency))
     else emitClearedAfterSelected()
+    // buildPartnerItems lee `answers`, así que `answers` debe estar en deps para
+    // re-derivar cuando cambia la selección de productos.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     phase,
+    answers,
     submitting,
     findIncompleteStepIndex,
-    emitSelectedOnce,
+    emitSelected,
     emitClearedAfterSelected,
   ])
 
@@ -524,6 +587,7 @@ export function EmbedWizard(props: Props) {
           submitting={submitting}
           ctx={phase.ctx}
           forms={props.forms}
+          productLists={props.productLists}
           onJumpTo={goTo}
           onNext={goNext}
           onChange={setStepAnswers}
@@ -549,6 +613,7 @@ function WizardBody({
   submitting,
   ctx,
   forms,
+  productLists,
   onJumpTo,
   onNext,
   onChange,
@@ -564,6 +629,7 @@ function WizardBody({
   submitting: boolean
   ctx: IframeContext
   forms: PublishedForm[]
+  productLists?: ProductLists
   onJumpTo: (index: number) => void
   onNext: (stepId: string, answers: Record<string, unknown>) => void
   onChange: (stepId: string, answers: Record<string, unknown>) => void
@@ -608,6 +674,8 @@ function WizardBody({
         <GroupStep
           step={step}
           stepId={step.stepId}
+          currency={ctx.currency}
+          productLists={productLists}
           initial={answers[step.stepId] ?? prefillAnswers(step, ctx.user)}
           onChange={(next) => onChange(step.stepId, next)}
           onSubmit={(submitted) => onNext(step.stepId, submitted)}
@@ -675,6 +743,8 @@ function WizardBody({
 function GroupStep({
   step,
   stepId,
+  currency,
+  productLists,
   initial,
   onChange,
   onSubmit,
@@ -682,11 +752,22 @@ function GroupStep({
 }: {
   step: Extract<WizardStep, { kind: "group" }>
   stepId: string
+  currency: string
+  productLists?: ProductLists
   initial: Record<string, unknown>
   onChange: (a: Record<string, unknown>) => void
   onSubmit: (a: Record<string, unknown>) => void
   relevantServerErrors: ServerError[]
 }) {
+  // Subconjunto del listado para este form, re-clavado por questionId
+  // (la prop global viene como `${formId}::${questionId}`).
+  const productsByQuestion: Record<string, RenderProduct[]> = {}
+  if (productLists) {
+    const prefix = `${step.formId}::`
+    for (const [key, list] of Object.entries(productLists)) {
+      if (key.startsWith(prefix)) productsByQuestion[key.slice(prefix.length)] = list
+    }
+  }
   return (
     <div className="space-y-4">
       {relevantServerErrors.length > 0 && (
@@ -706,6 +787,8 @@ function GroupStep({
         onChange={onChange}
         onSubmit={async (a) => onSubmit(a)}
         formId={formIdFor(stepId)}
+        productLists={productsByQuestion}
+        currency={currency}
         omitHeader
         omitSubmit
         variant="embed"
@@ -970,9 +1053,29 @@ function EmptyState({
   )
 }
 
+// Resumen legible de un ProductPick desde su snapshot congelado: "Camiseta (M /
+// Rojo) ×2 — S/ 15.000". El precio sale del snapshot (no del catálogo vivo).
+function formatProductPick(pick: ProductPick): string {
+  const { snapshot } = pick
+  const name = snapshot.variantTitle
+    ? `${snapshot.title} (${snapshot.variantTitle})`
+    : snapshot.title
+  const qty = pick.quantity && pick.quantity > 1 ? ` ×${pick.quantity}` : ""
+  const price =
+    snapshot.price != null
+      ? ` — ${formatPrice(snapshot.price, snapshot.currency)}`
+      : ""
+  return `${name}${qty}${price}`
+}
+
 function formatValue(v: unknown): string {
   if (v == null || v === "") return "—"
-  if (Array.isArray(v)) return v.join(", ")
+  if (isProductPick(v)) return formatProductPick(v)
+  if (Array.isArray(v)) {
+    return v
+      .map((item) => (isProductPick(item) ? formatProductPick(item) : String(item)))
+      .join(", ")
+  }
   if (typeof v === "boolean") return v ? "Sí" : "No"
   return String(v)
 }

@@ -4,8 +4,8 @@ import { ThemeProvider } from "next-themes"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "Overview",
-  description: "Dashboard pages to summarize data.",
+  title: "Resumen",
+  description: "Páginas del panel para resumir datos.",
 }
 
 export default function RootLayout({
@@ -14,7 +14,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="es" suppressHydrationWarning>
       <body
         className={`${GeistSans.className} min-h-full bg-background text-foreground antialiased`}
       >

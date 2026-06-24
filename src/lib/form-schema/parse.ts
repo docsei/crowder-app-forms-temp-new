@@ -1,6 +1,7 @@
 import { z } from "zod"
 
 import type { FormDefinition } from "@/lib/db/schema"
+import { MAX_PARTNER_ITEMS } from "@/lib/products/derive"
 
 const visibleWhenSchema = z.object({
   question: z.string().min(1),
@@ -44,6 +45,7 @@ const questionTypeValues = [
   "scale",
   "consent",
   "info",
+  "product",
 ] as const
 
 const CHOICE_TYPES = new Set<(typeof questionTypeValues)[number]>([
@@ -85,6 +87,26 @@ const questionSchema = z
       })
       .optional(),
     consent: z.object({ mustAccept: z.boolean() }).optional(),
+    product: z
+      .object({
+        source: z.enum(["collection", "catalog", "curated"]).optional(),
+        catalogId: z.string().min(1),
+        collectionId: z.string().min(1).optional(),
+        filter: z
+          .object({
+            tag: z.string().optional(),
+            collection: z.string().optional(),
+            status: z.literal("active").optional(),
+          })
+          .optional(),
+        productIds: z.array(z.string().min(1)).optional(),
+        min: z.number().int().min(0).optional(),
+        // Tope duro del protocolo Crowder: 1–10 items por interaction (sección 9.2).
+        max: z.number().int().min(1).max(MAX_PARTNER_ITEMS).optional(),
+        allowQuantity: z.boolean().optional(),
+        showPrice: z.boolean().optional(),
+      })
+      .optional(),
     prefillFrom: z.enum(prefillFromValues).optional(),
     visibleWhen: visibleWhenSchema.optional(),
   })
@@ -109,6 +131,39 @@ const questionSchema = z
         path: ["consent"],
         message: "'consent' requires consent config",
       })
+    }
+    if (q.type === "product") {
+      if (!q.product) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["product"],
+          message: "'product' requires product config with catalogId",
+        })
+      } else {
+        const p = q.product
+        if (p.min != null && p.max != null && p.min > p.max) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["product", "min"],
+            message: "min cannot be greater than max",
+          })
+        }
+        // Consistencia del modo de listado (la colección es el modo principal):
+        if (p.source === "collection" && !p.collectionId && !p.filter?.collection) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["product", "collectionId"],
+            message: "source 'collection' requires collectionId",
+          })
+        }
+        if (p.source === "curated" && (!p.productIds || p.productIds.length === 0)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["product", "productIds"],
+            message: "source 'curated' requires at least one productId",
+          })
+        }
+      }
     }
   })
 

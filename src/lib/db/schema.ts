@@ -37,6 +37,21 @@ export type RefundReason = (typeof refundReasonEnum.enumValues)[number]
 export const groupScopeEnum = pgEnum("group_scope", ["transaction", "item"])
 export type GroupScope = (typeof groupScopeEnum.enumValues)[number]
 
+// Proveedores de e-commerce integrables. Un proveedor = un adapter
+// (ver docs/products/definition.md, sección 5). "shopify" es la base de Fase 1.
+export const providerEnum = pgEnum("provider", ["shopify", "vtex"])
+export type Provider = (typeof providerEnum.enumValues)[number]
+
+// Origen de un catálogo: "manual" tiene vida propia (CRUD a mano); el resto se
+// sincroniza desde el proveedor homónimo. Se mantiene separado de `provider`
+// porque uno califica la conexión y el otro el origen del catálogo.
+export const catalogSourceEnum = pgEnum("catalog_source", [
+  "manual",
+  "shopify",
+  "vtex",
+])
+export type CatalogSource = (typeof catalogSourceEnum.enumValues)[number]
+
 export type PartnerTheme = {
   primary?: string
 }
@@ -58,6 +73,12 @@ export const partnerConfig = pgTable("partner_config", {
     .notNull()
     .default(sql`'[]'::jsonb`),
   theme: jsonb("theme").$type<PartnerTheme>(),
+  // Feature-flag de plataforma: qué proveedores puede llegar a usar el partner
+  // (nivel "disponible", distinto de la conexión `active`; ver definition sección 5).
+  enabledProviders: jsonb("enabled_providers")
+    .$type<Provider[]>()
+    .notNull()
+    .default(sql`'[]'::jsonb`),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -88,6 +109,184 @@ export const apiKeys = pgTable("api_keys", {
     .notNull()
     .defaultNow(),
 })
+
+// ───────────────────────────────────────────────────────────────────────────
+// Productos (ver docs/products/definition.md + data-model.md)
+// ───────────────────────────────────────────────────────────────────────────
+
+// provider_credentials.config — parámetros NO secretos del proveedor; la forma
+// depende del provider. El/los secreto/s viven en la columna `secret` aparte.
+export type ProviderConfig =
+  | { shopDomain: string; apiVersion: string } // shopify
+  | { accountName: string; environment: string } // vtex (futuro)
+
+// catalogs.sync_state — resultado del último sync (para mostrar en la UI y
+// reanudar una corrida cortada por el cursor persistido).
+export type SyncState = {
+  lastRunAt: string
+  cursor: string | null
+  counts: { fetched: number; upserted: number; archived: number }
+  errors: string[]
+}
+
+export type ProductStatus = "active" | "draft" | "archived"
+
+// products.options — opciones que generan las variantes (Shopify-style).
+// Orden de los valores = índice de array.
+export type ProductOption = { name: string; values: string[] }
+
+// Una variante es una combinación concreta de valores de opción (M × Rojo) y la
+// unidad vendible: tiene su sku, precio, imagen y stock (ver definition sección 4.3.1).
+export type ProductVariant = {
+  id: string // estable dentro del producto (uuid local o externalId)
+  externalId: string | null
+  options: Record<string, string> // { "Talla": "M", "Color": "Rojo" }
+  title: string // "M / Rojo" | "Default Title"
+  sku: string | null
+  price: number | null // precio de ESTA variante (puede diferir por talla)
+  // Galería de la variante. imageUrl es la portada (= images[0]), conservada para
+  // render/snapshot; images guarda el set completo. Vacío ⇒ hereda la del producto.
+  images: string[]
+  imageUrl: string | null // portada = images[0]; fallback a product.imageUrl
+  status: ProductStatus
+  // Inventario por variante (modelo espejo de Shopify, sección 4.4):
+  stockTracked: boolean // "Track quantity"; false => ilimitada
+  stock: number | null
+  oversellPolicy: "deny" | "continue" // deny: no vende en 0; continue: backorder
+}
+
+// provider_credentials — credencial de un tercero (Shopify/VTEX) que NOSOTROS
+// custodiamos para llamar a SU API. Naturaleza opuesta a api_keys (definition
+// sección 2): solo comparten higiene de almacenamiento (secreto en texto plano + toggle
+// active), no propósito ni ciclo de vida.
+export const providerCredentials = pgTable("provider_credentials", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  provider: providerEnum("provider").notNull(),
+  name: text("name").notNull(), // alias visible: "Tienda principal"
+  config: jsonb("config").$type<ProviderConfig>().notNull(),
+  secret: text("secret").notNull(), // access token del tercero, texto plano
+  active: boolean("active").notNull().default(true),
+  // Soft-delete: nunca se borra una credencial; se marca eliminada (auditoría) y
+  // se filtra de toda lectura. El guard de catálogos colgando se chequea en dominio.
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+})
+
+// catalogs — conjunto de productos. source = manual (vida propia) o
+// source = <proveedor> (sincronizado desde su credencial).
+export const catalogs = pgTable("catalogs", {
+  id: text("id").primaryKey(), // slug, como forms.id
+  title: text("title").notNull(),
+  source: catalogSourceEnum("source").notNull(),
+  // null si source = manual; restrict para no borrar una credencial con catálogos
+  // colgando (primero hay que desconectar/migrar).
+  credentialId: uuid("credential_id").references(
+    () => providerCredentials.id,
+    { onDelete: "restrict" },
+  ),
+  currency: text("currency"), // moneda por defecto del catálogo
+  syncState: jsonb("sync_state").$type<SyncState>(),
+  // Soft-delete: el catálogo nunca se borra; al eliminarlo se marca acá y se
+  // cascadea el deletedAt a sus colecciones y productos (la FK sigue intacta).
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+})
+
+// collections — agrupación configurable dentro de un catálogo (entidad propia:
+// título, orden, externalId si vino de Shopify). La membresía producto↔colección
+// NO vive acá: vive embebida en products.collectionIds (D7).
+export const collections = pgTable(
+  "collections",
+  {
+    id: text("id").primaryKey(), // slug estable; es lo que referencia filter.collection
+    catalogId: text("catalog_id")
+      .notNull()
+      .references(() => catalogs.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    externalId: text("external_id"), // gid://shopify/Collection/...; null si manual
+    position: integer("position").notNull().default(0),
+    // Soft-delete: se marca eliminada (al borrarla o al cascadear desde el catálogo)
+    // y se filtra de toda lectura; la fila se conserva.
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("collections_catalog_id_idx").on(t.catalogId),
+    // upsert del sync por (catálogo, id externo); manuales (sin externalId) no chocan
+    uniqueIndex("collections_catalog_external_idx")
+      .on(t.catalogId, t.externalId)
+      .where(sql`${t.externalId} IS NOT NULL`),
+  ],
+)
+
+// products — producto con options/variants embebidos (JSONB, decisión D1).
+// Precio y stock viven en la variante. Todo producto tiene ≥ 1 variante.
+export const products = pgTable(
+  "products",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    catalogId: text("catalog_id")
+      .notNull()
+      .references(() => catalogs.id, { onDelete: "cascade" }),
+    externalId: text("external_id"), // id en el proveedor; null si manual
+    title: text("title").notNull(),
+    currency: text("currency"), // las variantes heredan
+    imageUrl: text("image_url"), // portada = images[0]; conservada para render/snapshot
+    // Galería del producto (ordenada; la primera es la portada). imageUrl se
+    // mantiene sincronizada a images[0] en la capa de dominio.
+    images: jsonb("images")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    // "active" | "draft" | "archived" — text, validado en dominio (D2)
+    status: text("status").$type<ProductStatus>().notNull().default("active"),
+    position: integer("position").notNull().default(0),
+    refundable: boolean("refundable").notNull().default(true),
+    options: jsonb("options").$type<ProductOption[]>(), // null si producto simple
+    variants: jsonb("variants").$type<ProductVariant[]>().notNull(), // SIEMPRE ≥ 1
+    collectionIds: jsonb("collection_ids")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    raw: jsonb("raw"), // payload crudo del proveedor (auditoría)
+    // Soft-delete: el producto nunca se borra (preserva snapshots de submissions e
+    // historial); se marca eliminado y se filtra de las lecturas. Distinto de
+    // status="archived": archivado sigue siendo gestionable, eliminado desaparece.
+    // El sync (upsert por externalId) lo revive poniendo deletedAt en null.
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("products_catalog_id_idx").on(t.catalogId),
+    // upsert del sync por (catálogo, id externo); manuales (sin externalId) no chocan
+    uniqueIndex("products_catalog_external_idx")
+      .on(t.catalogId, t.externalId)
+      .where(sql`${t.externalId} IS NOT NULL`),
+    // resolver el listado por colección: collection_ids @> '["<id>"]'
+    index("products_collection_ids_idx").using("gin", t.collectionIds),
+  ],
+)
 
 export type FormDefinition = {
   schemaVersion: 1
@@ -121,6 +320,7 @@ export type QuestionType =
   | "scale"
   | "consent"
   | "info"
+  | "product"
 
 export type FormQuestion = {
   id: string
@@ -138,6 +338,31 @@ export type FormQuestion = {
   options?: { value: string; label: string }[]
   scale?: { min: number; max: number; minLabel?: string; maxLabel?: string }
   consent?: { mustAccept: boolean }
+  // Config de la pregunta tipo `product` (ver definition sección 8). La regla de
+  // selección se expresa con min/max (no hace falta single/multiple).
+  //
+  // El listado se define con `source` (decisión del equipo: la COLECCIÓN es el
+  // modo principal — más amigable y coherente entre catálogos manuales/Shopify):
+  //   - "collection": lista los miembros de `collectionId` (catálogo derivado).
+  //   - "catalog":    lista todo el catálogo `catalogId` (status=active).
+  //   - "curated":    solo `productIds` del catálogo, en ese orden.
+  // `catalogId` se guarda SIEMPRE (derivado de la colección en modo collection)
+  // para que validación/currency/partnerItems tengan el catálogo sin re-lookup.
+  // Si `source` falta, se infiere: collectionId → collection; productIds → curated;
+  // si no → catalog (retrocompatible con configs que usaban filter.collection).
+  product?: {
+    source?: "collection" | "catalog" | "curated"
+    catalogId: string
+    collectionId?: string
+    productIds?: string[]
+    // filter.collection queda como alias legacy de collectionId; filter.tag aún
+    // no se resuelve (el modelo no guarda tags — ver memoria del repo).
+    filter?: { tag?: string; collection?: string; status?: "active" }
+    min?: number // mínimo a elegir (default 0)
+    max?: number // máximo a elegir (default 1; ≤ tope 10 del protocolo, sección 9.2)
+    allowQuantity?: boolean // cantidad por producto
+    showPrice?: boolean
+  }
   prefillFrom?:
     | "item.holder.firstName"
     | "item.holder.lastName"
@@ -162,6 +387,10 @@ export const forms = pgTable("forms", {
     .notNull()
     .default(sql`'[]'::jsonb`),
   theme: jsonb("theme").$type<FormTheme>(),
+  // Soft-delete: el form nunca se borra (preserva versiones, submissions e
+  // historial); se marca eliminado y se filtra de toda lectura. Distinto de
+  // enabled=false (archivado, sigue listándose): eliminado desaparece.
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -198,6 +427,19 @@ export type UserSnapshot = {
   country: string | null
 }
 
+// Line item del protocolo Crowder (ver definition sección 9.2). Cada unidad de un
+// producto seleccionado se emite como un PartnerItem con quantity: 1; N unidades
+// = N items. Se persiste en transactions.partnerItems y el refund parcial lo
+// reduce in-place (mismo uuid determinístico → variante, sección 9.8).
+export type PartnerItem = {
+  uuid: string // determinístico, estable dentro de la interaction (incluye variantId + unitIndex)
+  type: "STORE_PRODUCT" // valor del spec (sección 9.2); NO "STORE:PRODUCT" del template
+  description: string // ≤ 200 chars: título + variante
+  price: number // ≥ 0, 2 decimales; precio de la VARIANTE en la currency del contexto
+  quantity: 1 // SIEMPRE 1 (confirmado con Crowder)
+  refundable: boolean // política del producto (products.refundable)
+}
+
 export const transactions = pgTable("transactions", {
   id: text("id").primaryKey(),
   status: transactionStatusEnum("status").notNull(),
@@ -214,6 +456,13 @@ export const transactions = pgTable("transactions", {
   buyerEmail: text("buyer_email"),
   buyerFirstName: text("buyer_first_name"),
   buyerLastName: text("buyer_last_name"),
+  // Line items del protocolo Crowder derivados de las respuestas `product`.
+  // [] para forms sin productos (form-only) → retrocompatible. El refund parcial
+  // reduce este array (mismo uuid determinístico → variante, sección 9.3/9.8).
+  partnerItems: jsonb("partner_items")
+    .$type<PartnerItem[]>()
+    .notNull()
+    .default(sql`'[]'::jsonb`),
   expiresAt: timestamp("expires_at", { withTimezone: true }),
   purchaseId: integer("purchase_id"),
   purchaseAmount: doublePrecision("purchase_amount"),
@@ -346,4 +595,66 @@ export const webhookEvents = pgTable(
       .defaultNow(),
   },
   (t) => [uniqueIndex("webhook_events_unique").on(t.transactionId, t.status)],
+)
+
+// submissions.answers[questionId] cuando la pregunta es `product`. Guarda el
+// snapshot congelado al submit (patrón itemSnapshot) para que la submission sea
+// estable aunque el catálogo cambie después (ver definition sección 8.1).
+export type ProductPick = {
+  productId: string
+  variantId: string // variante elegida (la default si el producto es simple)
+  quantity?: number
+  snapshot: {
+    title: string
+    variantTitle: string | null // "M / Rojo" (null si producto simple)
+    options: Record<string, string> | null
+    sku: string | null // sku de la VARIANTE
+    price: number | null // precio de la VARIANTE al submit
+    currency: string | null
+    imageUrl: string | null // variant.imageUrl ?? product.imageUrl al submit
+  }
+}
+// max === 1 → un pick; max > 1 → array de picks.
+export type ProductAnswer = ProductPick | ProductPick[]
+
+// stock_reservations — hold de stock por (transaction, variante), append-only y
+// auditable (decisión D5). La reserva NO descuenta variant.stock directo:
+//   disponible(variante) = variant.stock − Σ(held de esa variante)
+// Idempotencia por (transactionId, productId, variantId): variantId solo es
+// único DENTRO del producto, así que sin productId dos productos de la misma
+// transacción colisionarían (ver definition sección 9.3.1).
+export const stockReservations = pgTable(
+  "stock_reservations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    transactionId: text("transaction_id")
+      .notNull()
+      .references(() => transactions.id, { onDelete: "cascade" }),
+    productId: uuid("product_id").notNull(), // FK lógico → products.id (variante embebida, D1)
+    variantId: text("variant_id").notNull(), // id de la variante dentro del JSONB
+    quantity: integer("quantity").notNull(),
+    // "held" | "released" | "consumed" — text, validado en dominio
+    status: text("status")
+      .$type<"held" | "released" | "consumed">()
+      .notNull()
+      .default("held"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }), // del ack de purchaseReserved
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("stock_reservations_txn_product_variant_idx").on(
+      t.transactionId,
+      t.productId,
+      t.variantId,
+    ),
+    // disponible(variante) = variant.stock − SUM(quantity where status='held')
+    index("stock_reservations_variant_held_idx")
+      .on(t.variantId)
+      .where(sql`${t.status} = 'held'`),
+  ],
 )

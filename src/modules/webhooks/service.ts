@@ -9,6 +9,12 @@ import {
   type RefundReason,
   type TransactionStatus,
 } from "@/modules/transactions"
+import {
+  confirmStock,
+  releaseStock,
+  reserveStock,
+  restockOnRefund,
+} from "@/modules/stock-reservations"
 
 import * as repo from "./repository"
 
@@ -69,6 +75,8 @@ export async function handle(input: {
         ? new Date(expiresAtRaw)
         : new Date(Date.now() + DEFAULT_RESERVATION_TTL_MS)
       const next = await markReserved(input.transactionId, { expiresAt })
+      // Acá empieza el compromiso de stock real (definition sección 9.3).
+      await reserveStock(input.transactionId, next.expiresAt ?? null)
       body = { status: "reserved", expiresAt: next.expiresAt!.toISOString() }
       break
     }
@@ -83,11 +91,15 @@ export async function handle(input: {
         purchaseId: purchase.id,
         purchaseAmount: purchase.amount,
       })
+      // Fulfillment: hold→consumed y descuento real de stock (sección 9.3).
+      await confirmStock(input.transactionId)
       body = { status: "confirmed" }
       break
     }
     case "purchaseExpired": {
       await markExpired(input.transactionId)
+      // El hold venció sin pago: liberar la reserva (sección 9.3).
+      await releaseStock(input.transactionId)
       body = { status: "expired" }
       break
     }
@@ -107,6 +119,8 @@ export async function handle(input: {
         refundedAt: new Date(),
         refundId: generateRefundId(),
       })
+      // Reponer el stock de lo vendido (sección 9.3).
+      await restockOnRefund(input.transactionId)
       body = { status: "refunded" }
       break
     }

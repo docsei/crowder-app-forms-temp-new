@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm"
 
 import { db } from "@/lib/db"
-import { partnerConfig, type PartnerTheme } from "@/lib/db/schema"
+import { partnerConfig, type PartnerTheme, type Provider } from "@/lib/db/schema"
 
 export type { PartnerTheme }
 
@@ -11,6 +11,7 @@ export type PartnerConfig = {
   protocolVersions: string[]
   allowedOrigins: string[]
   theme: PartnerTheme | null
+  enabledProviders: Provider[]
   updatedAt: Date
 }
 
@@ -28,6 +29,7 @@ export async function upsert(input: {
   protocolVersions: string[]
   allowedOrigins?: string[]
   theme?: PartnerTheme | null
+  enabledProviders?: Provider[]
 }): Promise<PartnerConfig> {
   const [row] = await db
     .insert(partnerConfig)

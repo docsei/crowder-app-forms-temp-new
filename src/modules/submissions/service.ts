@@ -12,8 +12,22 @@ import {
   groupHasRequiredQuestion,
   renderLabel,
 } from "@/lib/form-schema"
-import type { FormDefinition, FormGroup, ItemSnapshot } from "@/lib/db/schema"
+import type {
+  FormDefinition,
+  FormGroup,
+  FormQuestion,
+  ItemSnapshot,
+  PartnerItem,
+} from "@/lib/db/schema"
 import { findPublished, getVersion } from "@/modules/forms"
+import { resolveListing, toRenderProduct } from "@/modules/catalogs"
+import {
+  derivePartnerItems,
+  toPicks,
+  type DeriveError,
+  type ProductAnswerSource,
+  type ProductForDerive,
+} from "@/lib/products/derive"
 import { generateId } from "@/modules/transactions"
 
 import * as repo from "./repository"
@@ -32,7 +46,11 @@ type PublishedEntry = {
 export async function submitBatch(input: {
   context: SubmitContext
   submissions: SubmissionInput[]
-}): Promise<{ transactionId: string; submissions: Submission[] }> {
+}): Promise<{
+  transactionId: string
+  submissions: Submission[]
+  partnerItems: PartnerItem[]
+}> {
   const { context } = input
   const itemsByUuid = new Map(context.items.map((it) => [it.uuid, it]))
 
@@ -179,6 +197,13 @@ export async function submitBatch(input: {
     }
   }
 
+  // Derivación autoritativa de PartnerItem desde las respuestas `product`
+  // (definition sección 9.8): el servidor re-lee el catálogo (no confía en el
+  // snapshot del cliente) y valida productId/variante/precio/moneda/tope. Los
+  // errores se suman a la validación general antes del throw.
+  const derived = await deriveForValidated(validated, context.currency)
+  errors.push(...derived.errors)
+
   if (errors.length > 0) {
     throw new DomainError(
       "invalid_payload",
@@ -187,6 +212,7 @@ export async function submitBatch(input: {
     )
   }
 
+  const partnerItems = derived.items
   const transactionId = generateId()
   const rows = validated.map((v) => ({
     formId: v.input.formId,
@@ -220,12 +246,13 @@ export async function submitBatch(input: {
       buyerEmail: context.user?.email ?? null,
       buyerFirstName: context.user?.firstName ?? null,
       buyerLastName: context.user?.lastName ?? null,
+      partnerItems,
     })
     if (rows.length === 0) return []
     return tx.insert(submissionsTable).values(rows).returning()
   })
 
-  return { transactionId, submissions: inserted }
+  return { transactionId, submissions: inserted, partnerItems }
 }
 
 export async function editSubmission(input: {
@@ -297,6 +324,103 @@ export async function editSubmission(input: {
     }
     return updated
   })
+}
+
+// Deriva los PartnerItem de las respuestas `product` de un batch validado y, de
+// paso, hace la validación profunda contra el catálogo (definition sección 8.2 / 9.8):
+// productId en el listado resuelto, variante activa/con stock, precio y moneda.
+async function deriveForValidated(
+  validated: {
+    input: { formId: string; groupId: string; itemUuid?: string | null }
+    group: FormGroup
+    answers: Record<string, unknown>
+  }[],
+  currency: string,
+): Promise<{ items: PartnerItem[]; errors: ValidationError[] }> {
+  const sources: ProductAnswerSource[] = []
+  const lookup = new Map<string, ProductForDerive>()
+  const errors: ValidationError[] = []
+
+  // Prefetch del listado de cada pregunta `product` distinta en paralelo (clave
+  // `${formId}::${questionId}`), para validar pertenencia y armar el lookup sin
+  // round-trips secuenciales en el path de submit.
+  const listingConfigs = new Map<string, NonNullable<FormQuestion["product"]>>()
+  for (const v of validated) {
+    for (const q of v.group.questions) {
+      if (q.type === "product" && q.product)
+        listingConfigs.set(`${v.input.formId}::${q.id}`, q.product)
+    }
+  }
+  const listingCache = new Map<string, Set<string>>()
+  await Promise.all(
+    [...listingConfigs].map(async ([key, product]) => {
+      const products = await resolveListing(product)
+      listingCache.set(key, new Set(products.map((p) => p.id)))
+      for (const p of products) lookup.set(p.id, toRenderProduct(p))
+    }),
+  )
+
+  for (const v of validated) {
+    for (const q of v.group.questions) {
+      if (q.type !== "product" || !q.product) continue
+      const picks = toPicks(v.answers[q.id])
+      if (picks.length === 0) continue
+
+      const key = `${v.input.formId}::${q.id}`
+      const allowed = listingCache.get(key) ?? new Set<string>()
+      for (const pick of picks) {
+        if (!allowed.has(pick.productId)) {
+          errors.push({
+            formId: v.input.formId,
+            groupId: v.input.groupId,
+            itemUuid: v.input.itemUuid ?? undefined,
+            questionId: q.id,
+            code: "product_not_in_listing",
+            message: `el producto '${pick.productId}' no está en el listado de la pregunta`,
+          })
+        }
+      }
+      sources.push({
+        formId: v.input.formId,
+        groupId: v.input.groupId,
+        itemUuid: v.input.itemUuid ?? null,
+        questionId: q.id,
+        picks,
+      })
+    }
+  }
+
+  if (sources.length === 0) return { items: [], errors }
+
+  const result = derivePartnerItems(sources, lookup, currency)
+  for (const e of result.errors) {
+    errors.push({
+      formId: validated[0]?.input.formId ?? "",
+      groupId: "",
+      code: e.code,
+      message: deriveErrorMessage(e),
+    })
+  }
+  return { items: result.items, errors }
+}
+
+function deriveErrorMessage(e: DeriveError): string {
+  switch (e.code) {
+    case "product_not_found":
+      return `producto '${e.productId}' no encontrado en el catálogo`
+    case "variant_not_found":
+      return `la variante '${e.variantId}' no existe en el producto`
+    case "variant_unavailable":
+      return `la variante '${e.variantId}' no está disponible (sin stock)`
+    case "missing_price":
+      return `la variante '${e.variantId}' no tiene precio y no puede venderse`
+    case "currency_mismatch":
+      return `la moneda del producto no coincide con la del contexto (${e.expected})`
+    case "too_many_items":
+      return `demasiados items: ${e.got} (máximo ${e.max} por interaction)`
+    default:
+      return "error al derivar los productos"
+  }
 }
 
 export const groupedByEventFormGroup = repo.groupedByEventFormGroup

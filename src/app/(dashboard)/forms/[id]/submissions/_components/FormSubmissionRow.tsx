@@ -5,6 +5,7 @@ import { useState } from "react"
 import { Badge } from "@/components/Badge"
 import { Button } from "@/components/Button"
 import { DateTime } from "@/components/DateTime"
+import { TableCell, TableRow } from "@/components/Table"
 import { formatAnswer } from "@/lib/formatters"
 import type { FormQuestion } from "@/lib/db/schema"
 import type { PersonRow } from "@/modules/submissions"
@@ -49,8 +50,8 @@ export function FormSubmissionRow({
 
   return (
     <>
-      <tr className="border-b border-border transition last:border-0 hover:bg-muted/40">
-        <td className="px-4 py-3 text-foreground">
+      <TableRow hover>
+        <TableCell className="text-foreground">
           {row.hasItem ? (
             <>
               <div className="font-medium">{row.holderName ?? "—"}</div>
@@ -71,21 +72,21 @@ export function FormSubmissionRow({
               )}
             </>
           )}
-        </td>
-        <td
-          className="px-4 py-3 font-mono text-xs text-secondary-foreground"
+        </TableCell>
+        <TableCell
+          className="font-mono text-xs text-secondary-foreground"
           title={`Interaction: ${row.transactionId}`}
         >
           {row.purchaseId ?? "—"}
-        </td>
-        <td className="px-4 py-3 text-secondary-foreground">
+        </TableCell>
+        <TableCell className="text-secondary-foreground">
           <div className="truncate" title={row.eventName}>
             {row.eventName}
           </div>
           <p className="font-mono text-[11px] text-muted-foreground">
             {row.eventId}
           </p>
-        </td>
+        </TableCell>
         {questions.map((q) => {
           const rawAnswer = row.answers[q.id]
           const text = formatAnswer(rawAnswer)
@@ -103,9 +104,9 @@ export function FormSubmissionRow({
               : null
           const badge = origin ? ORIGIN_BADGE[origin] : null
           return (
-            <td
+            <TableCell
               key={q.id}
-              className="max-w-[200px] px-4 py-3 text-secondary-foreground"
+              className="max-w-[200px] text-secondary-foreground"
               title={text}
             >
               <div className="flex items-center gap-1.5">
@@ -120,21 +121,21 @@ export function FormSubmissionRow({
                   </Badge>
                 )}
               </div>
-            </td>
+            </TableCell>
           )
         })}
-        <td className="px-4 py-3">
+        <TableCell>
           {statusBadge}
           {row.edited && (
             <Badge variant="neutral" className="ml-2">
               editada
             </Badge>
           )}
-        </td>
-        <td className="px-4 py-3 text-xs text-muted-foreground">
+        </TableCell>
+        <TableCell className="text-xs text-muted-foreground">
           <DateTime value={row.lastActivity} />
-        </td>
-        <td className="px-4 py-3 text-right">
+        </TableCell>
+        <TableCell className="text-right">
           {defaultSubmissionId && (
             <Button
               variant="secondary"
@@ -148,8 +149,8 @@ export function FormSubmissionRow({
               Editar
             </Button>
           )}
-        </td>
-      </tr>
+        </TableCell>
+      </TableRow>
 
       {editing && (
         <EditSubmissionDrawer

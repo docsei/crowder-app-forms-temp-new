@@ -16,6 +16,14 @@ import { StatusBadge } from "@/components/dashboard/StatusBadge"
 import { TabNav } from "@/components/dashboard/TabNav"
 import { Pagination } from "@/components/dashboard/Pagination"
 import { Badge } from "@/components/Badge"
+import {
+  Table,
+  TableBody,
+  TableHead,
+  TableHeaderCell,
+  TableRoot,
+  TableRow,
+} from "@/components/Table"
 import { EmptyCard } from "@/components/dashboard/EmptyCard"
 import { findForm, findLatest } from "@/modules/forms"
 import {
@@ -274,15 +282,15 @@ export default async function FormDrilldownPage({
             </Card>
           ) : (
             <Card className="overflow-hidden bg-background p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="border-b border-border text-xs uppercase text-muted-foreground">
-                    <tr>
-                      <th className="px-4 py-3 font-medium">Persona</th>
-                      <th className="px-4 py-3 font-medium">ID Crowder</th>
-                      <th className="px-4 py-3 font-medium">Evento</th>
+              <TableRoot>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableHeaderCell>Persona</TableHeaderCell>
+                      <TableHeaderCell>ID Crowder</TableHeaderCell>
+                      <TableHeaderCell>Evento</TableHeaderCell>
                       {allQuestions.map((q) => (
-                        <th key={q.id} className="px-4 py-3 font-medium">
+                        <TableHeaderCell key={q.id}>
                           <span className="inline-flex items-center gap-1.5">
                             {q.label}
                             {q.prefillFrom && (
@@ -295,14 +303,14 @@ export default async function FormDrilldownPage({
                               </Badge>
                             )}
                           </span>
-                        </th>
+                        </TableHeaderCell>
                       ))}
-                      <th className="px-4 py-3 font-medium">Estado</th>
-                      <th className="px-4 py-3 font-medium">Fecha</th>
-                      <th className="px-4 py-3" />
-                    </tr>
-                  </thead>
-                  <tbody>
+                      <TableHeaderCell>Estado</TableHeaderCell>
+                      <TableHeaderCell>Fecha</TableHeaderCell>
+                      <TableHeaderCell />
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
                     {pagedPersons.map((p) => (
                       <FormSubmissionRow
                         key={p.key}
@@ -311,9 +319,9 @@ export default async function FormDrilldownPage({
                         statusBadge={<StatusBadge status={p.transactionStatus} />}
                       />
                     ))}
-                  </tbody>
-                </table>
-              </div>
+                  </TableBody>
+                </Table>
+              </TableRoot>
             </Card>
           )}
           {persons.length > PAGE_SIZE && (

@@ -2,6 +2,7 @@ import type {
   FormDefinition,
   FormGroup,
   FormQuestion,
+  ProductPick,
   TransactionStatus,
 } from "@/lib/db/schema"
 import type {
@@ -9,6 +10,7 @@ import type {
   ExportColumn,
   ExportTable,
 } from "@/lib/export-table"
+import { toPicks } from "@/lib/products/derive"
 
 import { PRESET_FIELDS, type ExportPreset } from "./export-presets"
 import type { PersonRow } from "./merge-by-person"
@@ -49,6 +51,31 @@ function answerCell(value: unknown): ExportCell {
   if (value == null) return ""
   if (Array.isArray(value)) return value.join("; ")
   return String(value)
+}
+
+// Una pregunta `product` aporta varias columnas (definition sección 8.4):
+// producto, variante, sku, cantidad, precio. Con max > 1 NO se aplana a varias
+// filas: los picks se concatenan dentro de cada celda con "; " (decidido).
+const PRODUCT_FIELDS = ["producto", "variante", "sku", "cantidad", "precio"] as const
+
+// Sufijos de header que aporta una pregunta. No-product = una sola columna
+// (sufijo vacío); product = las 5 columnas de PRODUCT_FIELDS.
+function questionColumnSuffixes(q: FormQuestion): string[] {
+  return q.type === "product" ? PRODUCT_FIELDS.map((f) => `.${f}`) : [""]
+}
+
+// Celdas de una pregunta para una submission, alineadas a questionColumnSuffixes.
+function questionCells(q: FormQuestion, value: unknown): ExportCell[] {
+  if (q.type !== "product") return [answerCell(value)]
+  const picks = toPicks(value)
+  const join = (fn: (p: ProductPick) => string) => picks.map(fn).join("; ")
+  return [
+    join((p) => p.snapshot?.title ?? ""),
+    join((p) => p.snapshot?.variantTitle ?? "—"),
+    join((p) => p.snapshot?.sku ?? ""),
+    join((p) => String(p.quantity ?? 1)),
+    join((p) => (p.snapshot?.price != null ? String(p.snapshot.price) : "")),
+  ]
 }
 
 // Canonical identity columns, shared verbatim by both levels so naming and
@@ -185,11 +212,13 @@ export function buildGroupExportTable(params: {
 
   const columns: ExportColumn[] = [
     ...idCols.map((c) => ({ header: c.header, type: c.type })),
-    ...questions.map((q) => ({ header: q.id })),
+    ...questions.flatMap((q) =>
+      questionColumnSuffixes(q).map((suffix) => ({ header: `${q.id}${suffix}` })),
+    ),
   ]
   const tableRows = rows.map((r) => [
     ...idCols.map((c) => c.value(r)),
-    ...questions.map((q) => answerCell(r.submission.answers[q.id])),
+    ...questions.flatMap((q) => questionCells(q, r.submission.answers[q.id])),
   ])
   return { columns, rows: tableRows }
 }
@@ -210,7 +239,7 @@ export function buildAllExportTable(params: {
   // group's columns instead of scanning the full union (avoids O(rows × cols)).
   const answerColsByGroup = new Map<
     string,
-    { index: number; questionId: string }[]
+    { index: number; question: FormQuestion }[]
   >()
   const versionsByFormId = new Map<string, typeof versions>()
   for (const v of versions) {
@@ -233,10 +262,12 @@ export function buildAllExportTable(params: {
           if (seen.has(key)) continue
           seen.add(key)
           const index = answerHeaders.length
-          answerHeaders.push(`${formId}.${group.id}.${q.id}`)
+          for (const suffix of questionColumnSuffixes(q)) {
+            answerHeaders.push(`${formId}.${group.id}.${q.id}${suffix}`)
+          }
           const list = answerColsByGroup.get(groupKey)
-          if (list) list.push({ index, questionId: q.id })
-          else answerColsByGroup.set(groupKey, [{ index, questionId: q.id }])
+          if (list) list.push({ index, question: q })
+          else answerColsByGroup.set(groupKey, [{ index, question: q }])
         }
       }
     }
@@ -252,8 +283,11 @@ export function buildAllExportTable(params: {
     const answerValues: ExportCell[] = new Array(answerHeaders.length).fill("")
     const matches = answerColsByGroup.get(`${s.formId}|${s.groupId}`)
     if (matches) {
-      for (const { index, questionId } of matches) {
-        answerValues[index] = answerCell(s.answers[questionId])
+      for (const { index, question } of matches) {
+        const cells = questionCells(question, s.answers[question.id])
+        cells.forEach((cell, offset) => {
+          answerValues[index + offset] = cell
+        })
       }
     }
     return [...idCols.map((c) => c.value(r)), ...answerValues]
@@ -283,7 +317,11 @@ export function buildFormExportTable(params: {
     { header: "item.sector_rate" },
     { header: "last_activity" },
     { header: "edited" },
-    ...questions.map((q) => ({ header: q.label })),
+    ...questions.flatMap((q) =>
+      questionColumnSuffixes(q).map((suffix) => ({
+        header: `${q.label}${suffix}`,
+      })),
+    ),
   ]
 
   const rows = persons.map((p) => [
@@ -299,7 +337,7 @@ export function buildFormExportTable(params: {
     p.sectorRate ?? "",
     p.lastActivity.toISOString(),
     p.edited ? "yes" : "",
-    ...questions.map((q) => answerCell(p.answers[q.id])),
+    ...questions.flatMap((q) => questionCells(q, p.answers[q.id])),
   ])
 
   return { columns, rows }

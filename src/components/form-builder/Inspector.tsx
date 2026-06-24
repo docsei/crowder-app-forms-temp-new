@@ -20,6 +20,7 @@ import type {
   GroupScope,
   QuestionType,
 } from "@/lib/db/schema"
+import { MAX_PARTNER_ITEMS, resolveProductMode } from "@/lib/products/derive"
 
 import { deriveId } from "./derive"
 import { FieldLabel, IconButton, NativeSelect, SwitchRow } from "./primitives"
@@ -332,6 +333,12 @@ export function GroupInspector({
 
 /* ──────────────── QuestionInspector ──────────────── */
 
+export type CatalogOption = {
+  id: string
+  title: string
+  collections: { id: string; title: string }[]
+}
+
 export function QuestionInspector({
   question,
   groupScope,
@@ -339,6 +346,7 @@ export function QuestionInspector({
   totalInGroup,
   groupTitle,
   siblings,
+  catalogOptions = [],
   onPatch,
   onRemove,
   onMove,
@@ -350,6 +358,7 @@ export function QuestionInspector({
   totalInGroup: number
   groupTitle: string
   siblings: { id: string; label: string }[]
+  catalogOptions?: CatalogOption[]
   onPatch: (patch: Partial<FormQuestion>) => void
   onRemove: () => void
   onMove: (dir: -1 | 1) => void
@@ -361,6 +370,7 @@ export function QuestionInspector({
   const isScale = question.type === "scale"
   const isConsent = question.type === "consent"
   const isInfo = question.type === "info"
+  const isProduct = question.type === "product"
 
   function handleTypeChange(nextType: QuestionType) {
     const patch: Partial<FormQuestion> = { type: nextType }
@@ -379,6 +389,17 @@ export function QuestionInspector({
       patch.consent = { mustAccept: true }
     }
     if (nextType !== "consent") patch.consent = undefined
+    // Seed de config product: catálogo (el primero disponible) + defaults.
+    if (nextType === "product" && !question.product) {
+      patch.product = {
+        source: "collection", // modo recomendado; el operador elige la colección
+        catalogId: catalogOptions[0]?.id ?? "",
+        min: 0,
+        max: 1,
+        showPrice: true,
+      }
+    }
+    if (nextType !== "product") patch.product = undefined
     onPatch(patch)
   }
 
@@ -502,6 +523,14 @@ export function QuestionInspector({
           label="Debe aceptar para continuar"
           checked={question.consent?.mustAccept ?? true}
           onChange={(v) => onPatch({ consent: { mustAccept: v } })}
+        />
+      )}
+
+      {isProduct && (
+        <ProductConfigEditor
+          config={question.product}
+          catalogOptions={catalogOptions}
+          onChange={(product) => onPatch({ product })}
         />
       )}
 
@@ -671,6 +700,159 @@ function ScaleEditor({
           }
         />
       </FieldLabel>
+    </div>
+  )
+}
+
+function ProductConfigEditor({
+  config,
+  catalogOptions,
+  onChange,
+}: {
+  config: FormQuestion["product"]
+  catalogOptions: CatalogOption[]
+  onChange: (next: NonNullable<FormQuestion["product"]>) => void
+}) {
+  const cfg = config ?? { catalogId: catalogOptions[0]?.id ?? "" }
+  const { mode, collectionId } = resolveProductMode(cfg)
+
+  const patch = (p: Partial<NonNullable<FormQuestion["product"]>>) =>
+    onChange({ ...cfg, ...p })
+
+  // Lista plana de colecciones para el selector: "Catálogo · Colección".
+  const collectionChoices = catalogOptions.flatMap((c) =>
+    c.collections.map((col) => ({
+      value: col.id,
+      label: `${c.title} · ${col.title}`,
+      catalogId: c.id,
+    })),
+  )
+
+  const changeMode = (next: "collection" | "catalog" | "curated") => {
+    // Cambiar de modo limpia los campos del modo anterior; catalogId se mantiene.
+    patch({
+      source: next,
+      collectionId: undefined,
+      productIds: next === "curated" ? (cfg.productIds ?? []) : undefined,
+      filter: undefined,
+    })
+  }
+
+  return (
+    <div className="grid gap-3 rounded-md border border-border bg-background p-3 sm:grid-cols-2">
+      <FieldLabel
+        label="Origen del listado"
+        hint="La colección es el modo recomendado."
+      >
+        <NativeSelect
+          value={mode}
+          onChange={(v) => changeMode(v as "collection" | "catalog" | "curated")}
+          options={[
+            { value: "collection", label: "Colección" },
+            { value: "catalog", label: "Catálogo completo" },
+            { value: "curated", label: "Curado (ids)" },
+          ]}
+        />
+      </FieldLabel>
+
+      {mode === "collection" ? (
+        <FieldLabel label="Colección">
+          {collectionChoices.length > 0 ? (
+            <NativeSelect
+              value={collectionId ?? ""}
+              onChange={(v) => {
+                const choice = collectionChoices.find((c) => c.value === v)
+                patch({
+                  source: "collection",
+                  collectionId: v,
+                  catalogId: choice?.catalogId ?? cfg.catalogId,
+                  filter: undefined,
+                })
+              }}
+              options={[
+                { value: "", label: "Elegí una colección…" },
+                ...collectionChoices.map((c) => ({ value: c.value, label: c.label })),
+              ]}
+            />
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              No hay colecciones. Creá una en Catálogos primero.
+            </p>
+          )}
+        </FieldLabel>
+      ) : (
+        <FieldLabel label="Catálogo">
+          {catalogOptions.length > 0 ? (
+            <NativeSelect
+              value={cfg.catalogId}
+              onChange={(v) => patch({ catalogId: v })}
+              options={catalogOptions.map((c) => ({ value: c.id, label: c.title }))}
+            />
+          ) : (
+            <Input
+              value={cfg.catalogId}
+              onChange={(e) => patch({ catalogId: e.target.value })}
+              placeholder="id del catálogo (creá uno en Catálogos)"
+            />
+          )}
+        </FieldLabel>
+      )}
+
+      {mode === "curated" && (
+        <FieldLabel
+          label="IDs de producto (curado)"
+          hint="Separados por coma; respetan ese orden."
+        >
+          <Input
+            value={(cfg.productIds ?? []).join(", ")}
+            onChange={(e) =>
+              patch({
+                productIds: e.target.value
+                  .split(",")
+                  .map((s) => s.trim())
+                  .filter(Boolean),
+              })
+            }
+            placeholder="uuid-1, uuid-2"
+          />
+        </FieldLabel>
+      )}
+
+      <FieldLabel label="Mín. a elegir" hint="0 = opcional.">
+        <Input
+          type="number"
+          min={0}
+          value={cfg.min ?? 0}
+          onChange={(e) => patch({ min: Number(e.target.value) })}
+        />
+      </FieldLabel>
+      <FieldLabel
+        label="Máx. a elegir"
+        hint={`≤ ${MAX_PARTNER_ITEMS} (tope del protocolo).`}
+      >
+        <Input
+          type="number"
+          min={1}
+          max={MAX_PARTNER_ITEMS}
+          value={cfg.max ?? 1}
+          onChange={(e) => patch({ max: Number(e.target.value) })}
+        />
+      </FieldLabel>
+      <div className="sm:col-span-2">
+        <SwitchRow
+          label="Mostrar precio"
+          checked={cfg.showPrice ?? false}
+          onChange={(v) => patch({ showPrice: v })}
+        />
+      </div>
+      <div className="sm:col-span-2">
+        <SwitchRow
+          label="Permitir cantidad por producto"
+          hint={`Cada unidad consume uno del tope 1–${MAX_PARTNER_ITEMS}.`}
+          checked={cfg.allowQuantity ?? false}
+          onChange={(v) => patch({ allowQuantity: v })}
+        />
+      </div>
     </div>
   )
 }

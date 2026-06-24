@@ -1,21 +1,19 @@
-import { DomainError } from "@/lib/errors"
+import { DEFAULT_CURRENCY_CODES } from "@/lib/products/currencies"
 
 import * as repo from "./repository"
 import type { PartnerConfig } from "./repository"
 
-export async function getConfig(): Promise<PartnerConfig | null> {
-  return repo.get()
+// Si el partner no configuró monedas, asumimos las de LATAM (decisión de
+// producto). El seed es solo lectura: no pisa una lista ya configurada y no
+// reescribe la fila, así que un partner puede recortarla desde /settings.
+function withDefaultCurrencies(cfg: PartnerConfig): PartnerConfig {
+  if (cfg.supportedCurrencies.length > 0) return cfg
+  return { ...cfg, supportedCurrencies: DEFAULT_CURRENCY_CODES }
 }
 
-export async function requireConfig(): Promise<PartnerConfig> {
+export async function getConfig(): Promise<PartnerConfig | null> {
   const cfg = await repo.get()
-  if (!cfg) {
-    throw new DomainError(
-      "internal_error",
-      "partner_config is not initialized — visit /settings",
-    )
-  }
-  return cfg
+  return cfg ? withDefaultCurrencies(cfg) : null
 }
 
 /**
@@ -27,7 +25,7 @@ export async function ensureConfig(): Promise<PartnerConfig> {
   const cfg = await repo.get()
   if (cfg) return cfg
   return repo.upsert({
-    supportedCurrencies: [],
+    supportedCurrencies: DEFAULT_CURRENCY_CODES,
     protocolVersions: ["1.2"],
     allowedOrigins: [],
     theme: null,

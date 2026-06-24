@@ -8,6 +8,7 @@ import {
 } from "@remixicon/react"
 import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 
+import { downloadJson } from "@/lib/download"
 import { Badge } from "@/components/Badge"
 import { Banner } from "@/components/Banner"
 import { Button } from "@/components/Button"
@@ -48,9 +49,15 @@ import { HistoryPanel } from "./HistoryPanel"
 export function FormEditor({
   form,
   versions,
+  catalogOptions = [],
 }: {
   form: Form
   versions: FormVersion[]
+  catalogOptions?: {
+    id: string
+    title: string
+    collections: { id: string; title: string }[]
+  }[]
 }) {
   const [meta, setMeta] = useState<FormMeta>({
     title: form.title,
@@ -218,17 +225,8 @@ export function FormEditor({
   }
   function handleExport() {
     setIoMessage(null)
-    const payload = JSON.stringify(definition, null, 2)
-    const blob = new Blob([payload], { type: "application/json" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
     const slug = form.id.replace(/[^a-z0-9_-]+/gi, "_")
-    a.href = url
-    a.download = `${slug}.form.json`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    URL.revokeObjectURL(url)
+    downloadJson(`${slug}.form.json`, definition)
   }
   function handleImportClick() {
     setIoMessage(null)
@@ -309,6 +307,7 @@ export function FormEditor({
         siblings={group.questions
           .map((sq) => ({ id: sq.id, label: sq.label || sq.id }))
           .filter((_, i) => i !== selection.qIdx)}
+        catalogOptions={catalogOptions}
         onPatch={(patch) => patchQuestion(selection.gIdx, selection.qIdx, patch)}
         onRemove={() => removeQuestion(selection.gIdx, selection.qIdx)}
         onMove={(dir) => moveQuestion(selection.gIdx, selection.qIdx, dir)}

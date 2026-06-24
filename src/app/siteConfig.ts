@@ -5,9 +5,11 @@ export const siteConfig = {
   baseLinks: {
     overview: "/",
     forms: "/forms",
+    catalogs: "/catalogs",
     transactions: "/transactions",
-    webhooks: "/webhooks",
     settings: "/settings",
+    integrations: "/settings/integrations",
+    webhooks: "/settings/webhooks",
     login: "/login",
   },
 }

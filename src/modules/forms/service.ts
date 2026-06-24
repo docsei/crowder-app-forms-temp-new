@@ -1,5 +1,6 @@
 import { DomainError } from "@/lib/errors"
 import { emptyDefinition, parseFormDefinition } from "@/lib/form-schema"
+import { slugify as slugifyBase, uniqueSlug } from "@/lib/slug"
 
 import * as repo from "./repository"
 import type {
@@ -47,7 +48,9 @@ export async function createForm(input: CreateFormInput): Promise<Form> {
         "id must be slug-like: lowercase, digits, hyphens, 2–64 chars",
       )
     }
-    const existing = await repo.findById(input.id)
+    // Unicidad contra TODO el universo de ids (incluye soft-deleted): el id es
+    // PK, recrear un slug eliminado colisionaría la fila y reviviría su historial.
+    const existing = await repo.existsIncludingDeleted(input.id)
     if (existing) {
       throw new DomainError(
         "invalid_payload",
@@ -56,7 +59,11 @@ export async function createForm(input: CreateFormInput): Promise<Form> {
     }
     id = input.id
   } else {
-    id = await generateUniqueSlug(title)
+    id = await uniqueSlug(
+      slugifyBase(title, { letterPrefix: "form-", fallback: "form" }),
+      repo.existsIncludingDeleted,
+      "no fue posible generar un slug único, probá con otro título",
+    )
   }
   const definition = parseFormDefinition(input.definition ?? emptyDefinition())
   return repo.insert({
@@ -64,34 +71,6 @@ export async function createForm(input: CreateFormInput): Promise<Form> {
     title,
     definition,
   })
-}
-
-function slugify(value: string): string {
-  const base = value
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .replace(/-{2,}/g, "-")
-    .slice(0, 56)
-  const withLetter = /^[a-z]/.test(base) ? base : `form-${base}`.slice(0, 56)
-  const trimmed = withLetter.replace(/-+$/g, "")
-  return trimmed.length >= 2 ? trimmed : "form"
-}
-
-async function generateUniqueSlug(title: string): Promise<string> {
-  const base = slugify(title)
-  if (!(await repo.findById(base))) return base
-  for (let i = 0; i < 5; i++) {
-    const suffix = Math.random().toString(36).slice(2, 8)
-    const candidate = `${base}-${suffix}`.slice(0, 64)
-    if (!(await repo.findById(candidate))) return candidate
-  }
-  throw new DomainError(
-    "invalid_payload",
-    "no fue posible generar un slug único, probá con otro título",
-  )
 }
 
 export async function updateForm(

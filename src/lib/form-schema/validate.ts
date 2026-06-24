@@ -62,6 +62,8 @@ function requiredMessage(q: FormQuestion): string {
       return "Seleccioná al menos una opción"
     case "consent":
       return "Debés aceptar para continuar"
+    case "product":
+      return "Seleccioná un producto"
     default:
       return "Este campo es obligatorio"
   }
@@ -209,5 +211,69 @@ function baseSchemaForType(q: FormQuestion): ZodTypeAny {
     }
     case "info":
       return z.undefined()
+    case "product": {
+      // Validación ESTRUCTURAL de la respuesta (forma de ProductPick + reglas
+      // min/max). La validación profunda contra el catálogo resuelto (productId
+      // en el listado, variante activa, disponibilidad de stock — definition
+      // sección 8.2) corre server-side en el submit, donde hay acceso al catálogo.
+      const cfg = q.product
+      const max = cfg?.max ?? 1
+      const min = Math.max(cfg?.min ?? 0, q.required ? 1 : 0)
+      const pick = z
+        .object({
+          productId: z.string().min(1, requiredMsg),
+          variantId: z.string().min(1, "Elegí una variante"),
+          quantity: z.number().int().min(1).optional(),
+          snapshot: z.object({
+            title: z.string(),
+            variantTitle: z.string().nullable(),
+            options: z.record(z.string()).nullable(),
+            sku: z.string().nullable(),
+            price: z.number().nullable(),
+            currency: z.string().nullable(),
+            imageUrl: z.string().nullable(),
+          }),
+        })
+        .strict()
+      // max === 1 → un solo pick (el wrapper lo hace opcional si !required).
+      if (max === 1) return pick
+      // max > 1 → carrito de líneas (producto+variante). min/max cuentan UNIDADES
+      // totales (suma de cantidades), no el número de líneas: el comprador puede
+      // llevar varias tallas o varias unidades de una misma talla hasta sumar max.
+      // El tope global 1–10 se reaplica en la derivación (sección 9.8).
+      const unitsOf = (arr: { quantity?: number }[]) =>
+        arr.reduce((n, p) => n + (p.quantity ?? 1), 0)
+      return z
+        .array(pick, {
+          required_error: requiredMsg,
+          invalid_type_error: requiredMsg,
+        })
+        .superRefine((arr, ctx) => {
+          // Cada línea debe ser una combinación producto+variante única; dos
+          // líneas iguales colisionarían en el uuid determinístico (su unitIndex
+          // reinicia por pick) — la cantidad va dentro de la línea, no duplicada.
+          const seen = new Set<string>()
+          for (const p of arr) {
+            const key = `${p.productId}::${p.variantId}`
+            if (seen.has(key)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: "Línea de producto duplicada",
+              })
+            }
+            seen.add(key)
+          }
+          const units = unitsOf(arr)
+          if (units < min) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: requiredMsg })
+          }
+          if (units > max) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `Máximo ${max}`,
+            })
+          }
+        })
+    }
   }
 }

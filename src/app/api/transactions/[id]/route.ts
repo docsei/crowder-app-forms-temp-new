@@ -33,7 +33,9 @@ export async function GET(
   const common = {
     interaction: txn.id,
     currency: txn.currency,
-    partnerItems: [],
+    // Items persistidos por estado; el refund parcial los reduce (definition
+    // sección 9.7). El GET es idempotente y sin side effects (no toca stock, sección 9.4).
+    partnerItems: txn.partnerItems,
   }
   const purchase = { id: txn.purchaseId, amount: txn.purchaseAmount }
 

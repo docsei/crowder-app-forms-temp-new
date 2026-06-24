@@ -13,6 +13,7 @@ import {
   RiMailLine,
   RiPhoneLine,
   RiRadioButtonLine,
+  RiShoppingBag3Line,
   RiText,
   RiTimeLine,
   type RemixiconComponentType,
@@ -43,6 +44,7 @@ export const QUESTION_TYPES: QuestionTypeMeta[] = [
   { value: "scale", label: "Escala", Icon: RiBarChartHorizontalLine },
   { value: "consent", label: "Consentimiento", Icon: RiCheckboxLine },
   { value: "info", label: "Info (solo texto)", Icon: RiInformationLine },
+  { value: "product", label: "Producto", Icon: RiShoppingBag3Line },
 ]
 
 export const QUESTION_TYPE_BY_VALUE: Record<QuestionType, QuestionTypeMeta> =

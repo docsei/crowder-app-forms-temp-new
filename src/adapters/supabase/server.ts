@@ -1,8 +1,26 @@
 import "server-only"
 
 import { createServerClient } from "@supabase/ssr"
+import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 import { cookies } from "next/headers"
 import { env } from "@/lib/env"
+
+// Cliente con service role (bypassa RLS) para operaciones administrativas como
+// subir imágenes de producto a Storage. Requiere SUPABASE_SERVICE_ROLE_KEY.
+let serviceClient: SupabaseClient | null = null
+export function getServiceSupabase(): SupabaseClient {
+  if (!env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY no está configurada")
+  }
+  if (!serviceClient) {
+    serviceClient = createClient(
+      env.NEXT_PUBLIC_SUPABASE_URL,
+      env.SUPABASE_SERVICE_ROLE_KEY,
+      { auth: { persistSession: false } },
+    )
+  }
+  return serviceClient
+}
 
 export async function getServerSupabase() {
   const cookieStore = await cookies()

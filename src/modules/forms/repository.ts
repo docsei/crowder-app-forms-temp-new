@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, max, sql } from "drizzle-orm"
+import { and, desc, eq, inArray, isNull, max, sql } from "drizzle-orm"
 
 import { db } from "@/lib/db"
 import {
@@ -11,7 +11,11 @@ import {
 import type { Form, FormVersion } from "./types"
 
 export async function listAll(): Promise<Form[]> {
-  return db.select().from(forms).orderBy(desc(forms.updatedAt))
+  return db
+    .select()
+    .from(forms)
+    .where(isNull(forms.deletedAt))
+    .orderBy(desc(forms.updatedAt))
 }
 
 // Avoids hydrating the full `definition` JSONB for every row — the list view
@@ -37,7 +41,8 @@ export type FormListFilters = {
 export type FormListStatus = NonNullable<FormListFilters["status"]>
 
 function buildFormListWhere(filters: FormListFilters) {
-  const conds = []
+  // Los soft-deleted nunca aparecen en el listado ni en el conteo.
+  const conds = [sql`f.deleted_at is null`]
   if (filters.search) {
     const like = `%${filters.search}%`
     conds.push(sql`(f.title ilike ${like} or f.id ilike ${like})`)
@@ -118,13 +123,32 @@ export async function countForListView(
 }
 
 export async function findById(id: string): Promise<Form | null> {
-  const [row] = await db.select().from(forms).where(eq(forms.id, id)).limit(1)
+  const [row] = await db
+    .select()
+    .from(forms)
+    .where(and(eq(forms.id, id), isNull(forms.deletedAt)))
+    .limit(1)
   return row ?? null
+}
+
+// Existencia por id SIN filtrar soft-deleted: el id es PK (slug), así que un form
+// eliminado sigue ocupando el slug. Se usa para garantizar unicidad al crear
+// (recrear el mismo slug colisionaría la PK y reviviría versiones/submissions).
+export async function existsIncludingDeleted(id: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: forms.id })
+    .from(forms)
+    .where(eq(forms.id, id))
+    .limit(1)
+  return !!row
 }
 
 export async function findManyByIds(ids: string[]): Promise<Form[]> {
   if (ids.length === 0) return []
-  return db.select().from(forms).where(inArray(forms.id, ids))
+  return db
+    .select()
+    .from(forms)
+    .where(and(inArray(forms.id, ids), isNull(forms.deletedAt)))
 }
 
 // Devuelve los allowed_origins de los forms indicados (sin aplanar, para poder
@@ -137,7 +161,7 @@ export async function selectAllowedOriginsByForm(
   const rows = await db
     .select({ allowedOrigins: forms.allowedOrigins })
     .from(forms)
-    .where(inArray(forms.id, ids))
+    .where(and(inArray(forms.id, ids), isNull(forms.deletedAt)))
   return rows.map((r) => r.allowedOrigins)
 }
 
@@ -194,7 +218,12 @@ export async function update(
 }
 
 export async function deleteById(id: string): Promise<void> {
-  await db.delete(forms).where(eq(forms.id, id))
+  // Soft-delete: marca la fila como eliminada en vez de borrarla, así se preservan
+  // versiones, submissions e historial; toda lectura filtra deletedAt.
+  await db
+    .update(forms)
+    .set({ deletedAt: new Date(), updatedAt: new Date() })
+    .where(and(eq(forms.id, id), isNull(forms.deletedAt)))
 }
 
 export async function nextVersion(formId: string): Promise<number> {

@@ -19,6 +19,15 @@ import {
   truncateId,
 } from "@/lib/formatters"
 import { DateTime } from "@/components/DateTime"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeaderCell,
+  TableRoot,
+  TableRow,
+} from "@/components/Table"
 import { listAll } from "@/modules/webhooks"
 
 type WebhookRow = Awaited<ReturnType<typeof listAll>>[number]
@@ -28,60 +37,62 @@ export function WebhooksTable({ events }: { events: WebhookRow[] }) {
 
   return (
     <>
-      <table className="w-full text-left text-sm">
-        <thead className="border-b border-border text-xs uppercase text-muted-foreground">
-          <tr>
-            <th className="px-4 py-3 font-medium">Evento</th>
-            <th className="px-4 py-3 font-medium">Transacción</th>
-            <th className="px-4 py-3 font-medium">Response</th>
-            <th className="px-4 py-3 font-medium">Recibido</th>
-            <th className="px-4 py-3 font-medium text-right">Detalles</th>
-          </tr>
-        </thead>
-        <tbody>
-          {events.map((e) => (
-            <tr key={e.id} className="border-b border-border last:border-0">
-              <td className="px-4 py-3 text-foreground">
-                <span className="inline-flex items-center gap-2 text-sm font-medium">
-                  <RiSendPlaneLine
-                    className="size-4 text-faint"
-                    aria-hidden="true"
-                  />
-                  {formatWebhookEvent(e.status)}
-                </span>
-                <div className="ml-6 font-mono text-xs text-muted-foreground">
-                  {e.status}
-                </div>
-              </td>
-              <td className="px-4 py-3">
-                <Link
-                  href={`/transactions/${e.transactionId}?tab=webhooks`}
-                  className="font-mono text-xs text-secondary-foreground transition hover:text-primary"
-                >
-                  {truncateId(e.transactionId, 18)}
-                </Link>
-              </td>
-              <td className="px-4 py-3">
-                <Badge variant={httpStatusVariant(e.responseStatus)}>
-                  HTTP {e.responseStatus}
-                </Badge>
-              </td>
-              <td className="px-4 py-3 font-mono text-xs tabular-nums text-muted-foreground">
-                <DateTime value={e.processedAt} />
-              </td>
-              <td className="px-4 py-3 text-right">
-                <button
-                  type="button"
-                  onClick={() => setSelected(e)}
-                  className="text-xs text-muted-foreground transition hover:text-foreground"
-                >
-                  Ver detalles
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <TableRoot>
+        <Table>
+          <TableHead>
+            <TableRow>
+              <TableHeaderCell>Evento</TableHeaderCell>
+              <TableHeaderCell>Transacción</TableHeaderCell>
+              <TableHeaderCell>Response</TableHeaderCell>
+              <TableHeaderCell>Recibido</TableHeaderCell>
+              <TableHeaderCell className="text-right">Detalles</TableHeaderCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {events.map((e) => (
+              <TableRow key={e.id}>
+                <TableCell className="text-foreground">
+                  <span className="inline-flex items-center gap-2 text-sm font-medium">
+                    <RiSendPlaneLine
+                      className="size-4 text-faint"
+                      aria-hidden="true"
+                    />
+                    {formatWebhookEvent(e.status)}
+                  </span>
+                  <div className="ml-6 font-mono text-xs text-muted-foreground">
+                    {e.status}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <Link
+                    href={`/transactions/${e.transactionId}?tab=webhooks`}
+                    className="font-mono text-xs text-secondary-foreground transition hover:text-primary"
+                  >
+                    {truncateId(e.transactionId, 18)}
+                  </Link>
+                </TableCell>
+                <TableCell>
+                  <Badge variant={httpStatusVariant(e.responseStatus)}>
+                    HTTP {e.responseStatus}
+                  </Badge>
+                </TableCell>
+                <TableCell className="font-mono text-xs tabular-nums text-muted-foreground">
+                  <DateTime value={e.processedAt} />
+                </TableCell>
+                <TableCell className="text-right">
+                  <button
+                    type="button"
+                    onClick={() => setSelected(e)}
+                    className="text-xs text-muted-foreground transition hover:text-foreground"
+                  >
+                    Ver detalles
+                  </button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableRoot>
 
       <Drawer
         open={selected !== null}

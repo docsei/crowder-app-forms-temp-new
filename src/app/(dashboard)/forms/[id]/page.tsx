@@ -6,6 +6,7 @@ import { notFound } from "next/navigation"
 import { TabNav } from "@/components/dashboard/TabNav"
 import { getForm, listVersions } from "@/modules/forms"
 import type { FormVersion } from "@/modules/forms"
+import { listCatalogs, listCollectionsForCatalogs } from "@/modules/catalogs"
 import { getConfig } from "@/modules/partner-config"
 import { DomainError } from "@/lib/errors"
 import { DEFAULT_BRAND_HEX } from "@/lib/theme"
@@ -29,19 +30,34 @@ export default async function FormDetailPage({
       ? tabParam
       : "editor"
 
-  let form, versions, cfg
+  let form, versions, cfg, catalogs
   try {
-    ;[form, versions, cfg] = await Promise.all([
+    ;[form, versions, cfg, catalogs] = await Promise.all([
       getForm(id),
       tab === "editor" ? listVersions(id) : Promise.resolve<FormVersion[]>([]),
       tab === "appearance" || tab === "integration"
         ? getConfig()
         : Promise.resolve(null),
+      tab === "editor" ? listCatalogs() : Promise.resolve([]),
     ])
   } catch (err) {
     if (err instanceof DomainError && err.code === "not_found") notFound()
     throw err
   }
+
+  // Catálogos con sus colecciones para el builder de la pregunta `product`
+  // (la colección es el modo principal de scope; ver FormQuestion.product).
+  // Una sola query trae todas las colecciones; las agrupamos por catálogo acá.
+  const allCollections = await listCollectionsForCatalogs(
+    catalogs.map((c) => c.id),
+  )
+  const catalogOptions = catalogs.map((c) => ({
+    id: c.id,
+    title: c.title,
+    collections: allCollections
+      .filter((col) => col.catalogId === c.id)
+      .map((col) => ({ id: col.id, title: col.title })),
+  }))
 
   const h = await headers()
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000"
@@ -82,7 +98,13 @@ export default async function FormDetailPage({
 
       <TabNav tabs={tabs} active={tab} />
 
-      {tab === "editor" && <FormEditor form={form} versions={versions} />}
+      {tab === "editor" && (
+        <FormEditor
+          form={form}
+          versions={versions}
+          catalogOptions={catalogOptions}
+        />
+      )}
 
       {tab === "integration" && (
         <EmbedCard

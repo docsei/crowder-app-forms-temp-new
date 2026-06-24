@@ -1,6 +1,6 @@
 import { randomBytes } from "crypto"
 
-import { DomainError } from "@/lib/errors"
+import { DomainError, requireNonEmpty } from "@/lib/errors"
 
 import * as repo from "./repository"
 import type { ApiKey } from "./repository"
@@ -16,11 +16,8 @@ function generateSecret(): string {
   return randomBytes(32).toString("base64url")
 }
 
-function requireName(name: string): string {
-  const trimmed = name.trim()
-  if (!trimmed) throw new DomainError("invalid_payload", "El nombre es requerido")
-  return trimmed
-}
+const requireName = (name: string) =>
+  requireNonEmpty(name, "El nombre es requerido")
 
 const notFound = () => new DomainError("not_found", "API key no encontrada")
 

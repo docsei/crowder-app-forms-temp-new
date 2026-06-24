@@ -23,8 +23,10 @@ import {
 import { answersSchemaForGroup } from "@/lib/form-schema"
 import { cx } from "@/lib/utils"
 import type { FormGroup, FormQuestion } from "@/lib/db/schema"
+import type { RenderProduct } from "@/lib/products/types"
 
 import { MarkdownLite } from "./MarkdownLite"
+import { ProductSelector } from "./ProductSelector"
 
 type Answers = Record<string, unknown>
 type FieldErrors = Record<string, string>
@@ -54,6 +56,8 @@ export function FormRenderer({
   omitHeader = false,
   omitSubmit = false,
   variant = "default",
+  productLists,
+  currency,
 }: {
   group: FormGroup
   initialAnswers?: Answers
@@ -64,6 +68,9 @@ export function FormRenderer({
   omitHeader?: boolean
   omitSubmit?: boolean
   variant?: Variant
+  // Listados resueltos por questionId para preguntas `product` (definition sección 8).
+  productLists?: Record<string, RenderProduct[]>
+  currency?: string | null
 }) {
   const [answers, setAnswers] = useState<Answers>(initialAnswers ?? {})
   const [errors, setErrors] = useState<FieldErrors>({})
@@ -77,11 +84,13 @@ export function FormRenderer({
   )
 
   function setField(id: string, value: unknown) {
-    setAnswers((prev) => {
-      const next = { ...prev, [id]: value }
-      onChange?.(next)
-      return next
-    })
+    // `setField` solo corre desde event handlers, así que `answers` del closure
+    // ya es el valor commiteado. Computamos `next` acá (no dentro del updater de
+    // setAnswers) para no disparar el `onChange` del padre durante el render de
+    // este componente — eso causaba "Cannot update a component while rendering".
+    const next = { ...answers, [id]: value }
+    setAnswers(next)
+    onChange?.(next)
     if (errors[id]) {
       setErrors((prev) => {
         const nextErrors = { ...prev }
@@ -189,6 +198,8 @@ export function FormRenderer({
             onChange={(v) => setField(q.id, v)}
             onBlur={() => validateField(q.id)}
             variant={variant}
+            products={productLists?.[q.id]}
+            currency={currency}
           />
         ))}
       </div>
@@ -227,6 +238,7 @@ const EMBED_FULL_WIDTH_TYPES: ReadonlySet<FormQuestion["type"]> = new Set([
   "scale",
   "consent",
   "info",
+  "product",
 ])
 
 function isFilledValue(v: unknown): boolean {
@@ -252,6 +264,8 @@ function QuestionField({
   onChange,
   onBlur,
   variant,
+  products,
+  currency,
 }: {
   question: FormQuestion
   value: unknown
@@ -259,6 +273,8 @@ function QuestionField({
   onChange: (v: unknown) => void
   onBlur?: () => void
   variant: Variant
+  products?: RenderProduct[]
+  currency?: string | null
 }) {
   const id = `q-${question.id}`
   const embedFull =
@@ -387,6 +403,8 @@ function QuestionField({
         onBlur={onBlur}
         invalid={!!error}
         variant={variant}
+        products={products}
+        currency={currency}
       />
       {error && (
         <p className="text-xs text-destructive" role="alert">
@@ -405,6 +423,8 @@ function Field({
   onBlur,
   invalid,
   variant,
+  products,
+  currency,
 }: {
   id: string
   question: FormQuestion
@@ -413,6 +433,8 @@ function Field({
   onBlur?: () => void
   invalid: boolean
   variant: Variant
+  products?: RenderProduct[]
+  currency?: string | null
 }) {
   const ariaInvalid = invalid || undefined
   // Embed floating-label needs a non-empty placeholder so the input never
@@ -666,6 +688,16 @@ function Field({
     }
     case "info":
       return null
+    case "product":
+      return (
+        <ProductSelector
+          config={question.product}
+          products={products ?? []}
+          value={value}
+          onChange={onChange}
+          currency={currency}
+        />
+      )
   }
   return null
 }

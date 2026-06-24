@@ -40,6 +40,15 @@ export function statusForCode(code: DomainErrorCode): number {
   return httpByCode[code]
 }
 
+// Recorta el valor y exige que no quede vacío; si lo está, lanza invalid_payload
+// con el mensaje dado. Validador compartido por los services (nombre, secreto,
+// título, …) para no repetir el trim-and-throw.
+export function requireNonEmpty(value: string, message: string): string {
+  const trimmed = value.trim()
+  if (!trimmed) throw new DomainError("invalid_payload", message)
+  return trimmed
+}
+
 export function errorEnvelope(err: DomainError) {
   return {
     status: "error" as const,

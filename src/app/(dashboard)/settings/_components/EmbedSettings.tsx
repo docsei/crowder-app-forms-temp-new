@@ -4,60 +4,80 @@ import { useState, useTransition } from "react"
 
 import { Button } from "@/components/Button"
 import { Card } from "@/components/Card"
+import { Checkbox } from "@/components/Checkbox"
 import { Input } from "@/components/Input"
 import { OriginsListEditor } from "@/components/OriginsListEditor"
+import { CURRENCIES, CURRENCY_LIST } from "@/lib/products/currencies"
 import { DEFAULT_BRAND_HEX } from "@/lib/theme"
 
-import {
-  runExpireStale,
-  updateAllowedOrigins,
-  updateBrandPrimary,
-  updateCurrencies,
-} from "../actions"
-import { ApiKeysManager, type ApiKeyView } from "./ApiKeysManager"
+import { updateAllowedOrigins, updateBrandPrimary, updateCurrencies } from "../actions"
 
-export function SettingsForm({
-  apiKeys,
+export function EmbedSettings({
   currencies,
   allowedOrigins,
   brandPrimary,
 }: {
-  apiKeys: ApiKeyView[]
   currencies: string[]
   allowedOrigins: string[]
   brandPrimary: string | null
 }) {
-  const [currenciesInput, setCurrenciesInput] = useState(currencies.join(", "))
+  const [selectedCurrencies, setSelectedCurrencies] = useState<string[]>(currencies)
   const [brandInput, setBrandInput] = useState(brandPrimary ?? DEFAULT_BRAND_HEX)
   const [pending, startTransition] = useTransition()
-  const [expireResult, setExpireResult] = useState<number | null>(null)
+
+  // Monedas a mostrar: el registro LATAM + cualquier código ya configurado que
+  // no esté en el registro (no lo escondemos para no perderlo en silencio).
+  const extraCodes = selectedCurrencies.filter((c) => !CURRENCIES[c])
+  const toggleCurrency = (code: string) =>
+    setSelectedCurrencies((cur) =>
+      cur.includes(code) ? cur.filter((c) => c !== code) : [...cur, code],
+    )
 
   return (
     <div className="space-y-6">
-      <ApiKeysManager apiKeys={apiKeys} />
-
       <Card className="bg-background">
         <h2 className="text-sm font-semibold text-foreground">
           Monedas soportadas
         </h2>
         <p className="text-xs text-muted-foreground">
-          ISO 4217, separadas por coma. El iframe valida{" "}
+          Se guarda el código ISO 4217; el fan ve el símbolo. El iframe valida{" "}
           <code className="font-mono">context.currency</code> contra esta lista.
         </p>
-        <div className="mt-3 flex gap-2">
-          <Input
-            value={currenciesInput}
-            onChange={(e) => setCurrenciesInput(e.target.value)}
-            placeholder="ARS, BRL, USD"
-          />
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {CURRENCY_LIST.map((c) => (
+            <label
+              key={c.code}
+              className="flex items-center gap-2 text-sm text-foreground"
+            >
+              <Checkbox
+                checked={selectedCurrencies.includes(c.code)}
+                onCheckedChange={() => toggleCurrency(c.code)}
+              />
+              {c.country} —{" "}
+              <span className="font-medium">{c.symbol}</span>{" "}
+              <span className="font-mono text-xs text-muted-foreground">
+                ({c.code})
+              </span>
+            </label>
+          ))}
+          {extraCodes.map((code) => (
+            <label
+              key={code}
+              className="flex items-center gap-2 text-sm text-foreground"
+            >
+              <Checkbox checked onCheckedChange={() => toggleCurrency(code)} />
+              <span className="font-mono text-xs">{code}</span>
+              <span className="text-xs text-muted-foreground">
+                (fuera del registro)
+              </span>
+            </label>
+          ))}
+        </div>
+        <div className="mt-4">
           <Button
             disabled={pending}
             onClick={() =>
-              startTransition(() =>
-                updateCurrencies(
-                  currenciesInput.split(",").map((s) => s.trim()),
-                ),
-              )
+              startTransition(() => updateCurrencies(selectedCurrencies))
             }
           >
             Guardar
@@ -102,9 +122,7 @@ export function SettingsForm({
           />
           <Button
             disabled={pending}
-            onClick={() =>
-              startTransition(() => updateBrandPrimary(brandInput))
-            }
+            onClick={() => startTransition(() => updateBrandPrimary(brandInput))}
           >
             Guardar
           </Button>
@@ -122,39 +140,6 @@ export function SettingsForm({
               Restablecer
             </Button>
           )}
-        </div>
-      </Card>
-
-      <Card className="bg-background">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-sm font-semibold text-foreground">
-              Expirar transacciones vencidas
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              Marca como <code className="font-mono">expired</code> las
-              transacciones que pasaron su deadline sin confirmarse. Antes lo
-              corría un cron de Vercel; ahora se dispara desde acá.
-            </p>
-            {expireResult !== null && (
-              <p className="mt-2 text-xs text-muted-foreground">
-                Última ejecución: {expireResult}{" "}
-                {expireResult === 1 ? "transacción expirada" : "transacciones expiradas"}.
-              </p>
-            )}
-          </div>
-          <Button
-            variant="secondary"
-            disabled={pending}
-            onClick={() =>
-              startTransition(async () => {
-                const res = await runExpireStale()
-                setExpireResult(res.expired)
-              })
-            }
-          >
-            Ejecutar ahora
-          </Button>
         </div>
       </Card>
     </div>

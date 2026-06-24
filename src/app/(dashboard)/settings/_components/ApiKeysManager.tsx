@@ -6,6 +6,15 @@ import { Badge } from "@/components/Badge"
 import { Button } from "@/components/Button"
 import { Card } from "@/components/Card"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/Dialog"
+import {
   Drawer,
   DrawerBody,
   DrawerContent,
@@ -15,6 +24,15 @@ import {
 import { Input } from "@/components/Input"
 import { Label } from "@/components/Label"
 import { Switch } from "@/components/Switch"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeaderCell,
+  TableRoot,
+  TableRow,
+} from "@/components/Table"
 import { formatDateTime, maskKey } from "@/lib/formatters"
 
 import {
@@ -36,6 +54,7 @@ export type ApiKeyView = {
 
 export function ApiKeysManager({ apiKeys }: { apiKeys: ApiKeyView[] }) {
   const [pending, startTransition] = useTransition()
+  const [addOpen, setAddOpen] = useState(false)
   const [newName, setNewName] = useState("")
   // Secretos recién creados/regenerados que mostramos en claro una sola vez.
   const [revealed, setRevealed] = useState<Record<string, boolean>>({})
@@ -58,85 +77,121 @@ export function ApiKeysManager({ apiKeys }: { apiKeys: ApiKeyView[] }) {
   }
 
   return (
-    <Card className="space-y-4 bg-background">
-      <div className="flex items-start justify-between gap-4">
+    <div>
+      <div className="mb-8 flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-sm font-semibold text-foreground">
-            Crowder API Keys
-          </h2>
-          <p className="text-xs text-muted-foreground">
+          <h1 className="text-xl font-semibold tracking-tight text-foreground">
+            API Keys
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             Bearer que Crowder envía en cada request. Podés tener varias, darles
             nombre, desactivarlas y regenerarlas. Al regenerar, el secreto
             anterior sigue válido 24 h para no cortar integraciones en vivo.
           </p>
         </div>
-      </div>
-
-      <div className="flex gap-2">
-        <Input
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          placeholder="Nombre (ej: Producción, Staging)"
-        />
-        <Button
-          disabled={pending || !newName.trim()}
-          onClick={() =>
-            startTransition(async () => {
-              const res = await createApiKey(newName)
-              setNewName("")
-              reveal(res.id)
-              openDetail(res.id)
-            })
-          }
+        <Dialog
+          open={addOpen}
+          onOpenChange={(o) => {
+            setAddOpen(o)
+            if (!o) setNewName("")
+          }}
         >
-          Crear key
-        </Button>
+          <DialogTrigger asChild>
+            <Button>Crear key</Button>
+          </DialogTrigger>
+          <DialogContent className="bg-background">
+            <DialogHeader>
+              <DialogTitle>Crear API key</DialogTitle>
+              <DialogDescription>
+                Dale un nombre para identificarla. El secreto se genera al
+                crearla y lo ves una vez en el detalle.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="mt-4 space-y-1">
+              <Label>Nombre</Label>
+              <Input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="Nombre (ej: Producción, Staging)"
+              />
+            </div>
+
+            <DialogFooter className="mt-6">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setAddOpen(false)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                disabled={pending || !newName.trim()}
+                onClick={() => {
+                  setAddOpen(false)
+                  startTransition(async () => {
+                    const res = await createApiKey(newName)
+                    setNewName("")
+                    reveal(res.id)
+                    openDetail(res.id)
+                  })
+                }}
+              >
+                Crear key
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {apiKeys.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          Aún no creaste ninguna API key. Creá una para empezar el onboarding
-          con Crowder.
-        </p>
+        <Card className="bg-background">
+          <p className="text-sm text-muted-foreground">
+            Aún no creaste ninguna API key. Creá una para empezar el onboarding
+            con Crowder.
+          </p>
+        </Card>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-border text-xs uppercase text-muted-foreground">
-              <tr>
-                <th className="px-4 py-3 font-medium">Nombre</th>
-                <th className="px-4 py-3 font-medium">Secreto</th>
-                <th className="px-4 py-3 font-medium">Estado</th>
-                <th className="px-4 py-3 font-medium text-right">Detalle</th>
-              </tr>
-            </thead>
-            <tbody>
-              {apiKeys.map((k) => (
-                <tr key={k.id} className="border-b border-border last:border-0">
-                  <td className="px-4 py-3 text-sm font-medium text-foreground">
-                    {k.name}
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
-                    {maskKey(k.secret)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge variant={k.active ? "success" : "neutral"}>
-                      {k.active ? "Activa" : "Inactiva"}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      type="button"
-                      onClick={() => openDetail(k.id)}
-                      className="text-xs text-muted-foreground transition hover:text-foreground"
-                    >
-                      Ver detalle
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Card className="overflow-hidden bg-background p-0">
+          <TableRoot>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableHeaderCell>Nombre</TableHeaderCell>
+                  <TableHeaderCell>Secreto</TableHeaderCell>
+                  <TableHeaderCell>Estado</TableHeaderCell>
+                  <TableHeaderCell className="text-right">Detalle</TableHeaderCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {apiKeys.map((k) => (
+                  <TableRow key={k.id}>
+                    <TableCell className="text-sm font-medium text-foreground">
+                      {k.name}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">
+                      {maskKey(k.secret)}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={k.active ? "success" : "neutral"}>
+                        {k.active ? "Activa" : "Inactiva"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <button
+                        type="button"
+                        onClick={() => openDetail(k.id)}
+                        className="text-xs text-muted-foreground transition hover:text-foreground"
+                      >
+                        Ver detalle
+                      </button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableRoot>
+        </Card>
       )}
 
       <Drawer
@@ -291,6 +346,6 @@ export function ApiKeysManager({ apiKeys }: { apiKeys: ApiKeyView[] }) {
           )}
         </DrawerContent>
       </Drawer>
-    </Card>
+    </div>
   )
 }

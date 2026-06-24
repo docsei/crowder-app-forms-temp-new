@@ -1,6 +1,5 @@
 export {
   getConfig,
-  requireConfig,
   ensureConfig,
   updateConfig,
 } from "./service"

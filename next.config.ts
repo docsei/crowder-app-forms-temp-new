@@ -17,6 +17,15 @@ const baseSecurityHeaders = [
 ]
 
 const nextConfig: NextConfig = {
+  // Imágenes de producto: el CDN de Shopify y los buckets públicos de Supabase
+  // Storage (productos manuales). El iframe del fan las muestra por URL pública;
+  // el dashboard puede usar next/image con estos hosts (definition sección 10).
+  images: {
+    remotePatterns: [
+      { protocol: "https", hostname: "cdn.shopify.com" },
+      { protocol: "https", hostname: "*.supabase.co" },
+    ],
+  },
   headers: async () => [
     {
       source: "/embed/:path*",

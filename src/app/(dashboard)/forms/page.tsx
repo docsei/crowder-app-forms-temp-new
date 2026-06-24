@@ -8,6 +8,15 @@ import { EmptyState } from "@/components/EmptyState"
 import { Input } from "@/components/Input"
 import { Pagination } from "@/components/dashboard/Pagination"
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeaderCell,
+  TableRoot,
+  TableRow,
+} from "@/components/Table"
+import {
   countForms,
   listForms,
   type FormListStatus,
@@ -123,64 +132,66 @@ export default async function FormsPage({
       ) : (
         <>
           <Card className="overflow-hidden bg-background p-0">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-border text-xs uppercase text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Título</th>
-                  <th className="px-4 py-3 font-medium">Grupos</th>
-                  <th className="px-4 py-3 font-medium">Estado</th>
-                  <th className="px-4 py-3 font-medium">Actualizado</th>
-                  <th className="px-4 py-3" />
-                </tr>
-              </thead>
-              <tbody>
-                {forms.map((f) => (
-                  <tr key={f.id} className="border-b border-border last:border-0">
-                    <td className="px-4 py-3">
-                      <Link
-                        href={`/forms/${f.id}`}
-                        className="font-medium text-foreground transition hover:text-primary"
-                      >
-                        {f.title}
-                      </Link>
-                      <p className="font-mono text-xs text-muted-foreground">
-                        {f.id}
-                      </p>
-                    </td>
-                    <td className="px-4 py-3 text-secondary-foreground tabular-nums">
-                      {f.groupCount}
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        ({f.transactionGroupCount} tx · {f.itemGroupCount} item)
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      {!f.enabled ? (
-                        <Badge variant="neutral">Archivado</Badge>
-                      ) : f.publishedAt ? (
-                        <Badge variant="success">Publicado</Badge>
-                      ) : (
-                        <Badge variant="warning">Borrador</Badge>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      <DateTime value={f.updatedAt} />
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="inline-flex items-center gap-2">
-                        <Button asChild variant="ghost">
-                          <Link href={`/forms/${f.id}/submissions`}>
-                            Ver respuestas
-                          </Link>
-                        </Button>
-                        <Button asChild variant="secondary">
-                          <Link href={`/forms/${f.id}`}>Editar</Link>
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <TableRoot>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableHeaderCell>Título</TableHeaderCell>
+                    <TableHeaderCell>Grupos</TableHeaderCell>
+                    <TableHeaderCell>Estado</TableHeaderCell>
+                    <TableHeaderCell>Actualizado</TableHeaderCell>
+                    <TableHeaderCell />
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {forms.map((f) => (
+                    <TableRow key={f.id}>
+                      <TableCell>
+                        <Link
+                          href={`/forms/${f.id}`}
+                          className="font-medium text-foreground transition hover:text-primary"
+                        >
+                          {f.title}
+                        </Link>
+                        <p className="font-mono text-xs text-muted-foreground">
+                          {f.id}
+                        </p>
+                      </TableCell>
+                      <TableCell className="text-secondary-foreground tabular-nums">
+                        {f.groupCount}
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          ({f.transactionGroupCount} tx · {f.itemGroupCount} item)
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        {!f.enabled ? (
+                          <Badge variant="neutral">Archivado</Badge>
+                        ) : f.publishedAt ? (
+                          <Badge variant="success">Publicado</Badge>
+                        ) : (
+                          <Badge variant="warning">Borrador</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        <DateTime value={f.updatedAt} />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="inline-flex items-center gap-2">
+                          <Button asChild variant="ghost">
+                            <Link href={`/forms/${f.id}/submissions`}>
+                              Ver respuestas
+                            </Link>
+                          </Button>
+                          <Button asChild variant="secondary">
+                            <Link href={`/forms/${f.id}`}>Editar</Link>
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableRoot>
           </Card>
           <div className="mt-4">
             <Pagination

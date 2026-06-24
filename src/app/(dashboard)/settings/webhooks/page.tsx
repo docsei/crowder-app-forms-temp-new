@@ -95,7 +95,7 @@ export default async function WebhooksPage({
           </Button>
           {filtersActive && (
             <Button asChild variant="ghost">
-              <Link href="/webhooks">
+              <Link href="/settings/webhooks">
                 <RiCloseLine className="size-4" aria-hidden="true" /> Limpiar
               </Link>
             </Button>

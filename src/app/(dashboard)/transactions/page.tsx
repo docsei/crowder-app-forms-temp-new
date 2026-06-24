@@ -7,6 +7,15 @@ import { Input } from "@/components/Input"
 import { EmptyCard } from "@/components/dashboard/EmptyCard"
 import { StatusBadge } from "@/components/dashboard/StatusBadge"
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeaderCell,
+  TableRoot,
+  TableRow,
+} from "@/components/Table"
+import {
   formatMoney,
   formatTransactionStatus,
   truncateId,
@@ -172,69 +181,68 @@ export default async function TransactionsPage({
       ) : (
         <>
           <Card className="overflow-hidden bg-background p-0">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-border text-xs uppercase text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-3 font-medium">ID</th>
-                  <th className="px-4 py-3 font-medium">ID de compra</th>
-                  <th className="px-4 py-3 font-medium">Evento</th>
-                  <th className="px-4 py-3 font-medium">Estado</th>
-                  <th className="px-4 py-3 text-right font-medium">Compra</th>
-                  <th className="px-4 py-3 font-medium">Creada</th>
-                  <th className="px-4 py-3 font-medium">Actualizada</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((t) => (
-                  <tr
-                    key={t.id}
-                    className="border-b border-border transition last:border-0 hover:bg-muted/40"
-                  >
-                    <td className="px-4 py-3">
-                      <Link
-                        href={`/transactions/${t.id}`}
-                        prefetch={false}
-                        className="font-mono text-xs text-foreground transition hover:text-primary"
-                      >
-                        {truncateId(t.id, 24)}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3 font-mono text-xs text-secondary-foreground">
-                      {t.purchaseId != null ? (
-                        `#${t.purchaseId}`
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-secondary-foreground">
-                      <Link
-                        href={`/transactions/${t.id}`}
-                        prefetch={false}
-                        className="block hover:text-primary"
-                      >
-                        {t.eventName}
-                        <p className="text-xs text-muted-foreground">
-                          ID del evento:{" "}
-                          <span className="font-mono">{t.eventId}</span>
-                        </p>
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusBadge status={t.status} />
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-xs tabular-nums text-secondary-foreground">
-                      {formatMoney(t.purchaseAmount, t.currency)}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">
-                      <DateTime value={t.createdAt} />
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">
-                      <DateTime value={t.updatedAt} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <TableRoot>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableHeaderCell>ID</TableHeaderCell>
+                    <TableHeaderCell>ID de compra</TableHeaderCell>
+                    <TableHeaderCell>Evento</TableHeaderCell>
+                    <TableHeaderCell>Estado</TableHeaderCell>
+                    <TableHeaderCell className="text-right">Compra</TableHeaderCell>
+                    <TableHeaderCell>Creada</TableHeaderCell>
+                    <TableHeaderCell>Actualizada</TableHeaderCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {rows.map((t) => (
+                    <TableRow key={t.id} hover>
+                      <TableCell>
+                        <Link
+                          href={`/transactions/${t.id}`}
+                          prefetch={false}
+                          className="font-mono text-xs text-foreground transition hover:text-primary"
+                        >
+                          {truncateId(t.id, 24)}
+                        </Link>
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-secondary-foreground">
+                        {t.purchaseId != null ? (
+                          `#${t.purchaseId}`
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-secondary-foreground">
+                        <Link
+                          href={`/transactions/${t.id}`}
+                          prefetch={false}
+                          className="block hover:text-primary"
+                        >
+                          {t.eventName}
+                          <p className="text-xs text-muted-foreground">
+                            ID del evento:{" "}
+                            <span className="font-mono">{t.eventId}</span>
+                          </p>
+                        </Link>
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge status={t.status} />
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs tabular-nums text-secondary-foreground">
+                        {formatMoney(t.purchaseAmount, t.currency)}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        <DateTime value={t.createdAt} />
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        <DateTime value={t.updatedAt} />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableRoot>
           </Card>
           <Pagination
             page={pageNum}

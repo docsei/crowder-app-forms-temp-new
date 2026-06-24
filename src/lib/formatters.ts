@@ -115,6 +115,7 @@ const QUESTION_TYPE_LABEL: Record<QuestionType, string> = {
   scale: "Escala",
   consent: "Consentimiento",
   info: "Info (solo texto)",
+  product: "Producto",
 }
 
 export function formatQuestionType(type: QuestionType): string {

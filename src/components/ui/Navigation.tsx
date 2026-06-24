@@ -8,11 +8,11 @@ import { Logo } from "../../../public/Logo"
 import { DropdownUserProfile } from "./UserProfile"
 
 const navItems = [
-  { href: siteConfig.baseLinks.overview, label: "Overview" },
+  { href: siteConfig.baseLinks.overview, label: "Resumen" },
   { href: siteConfig.baseLinks.forms, label: "Formularios" },
+  { href: siteConfig.baseLinks.catalogs, label: "Catálogos" },
   { href: siteConfig.baseLinks.transactions, label: "Transacciones" },
-  { href: siteConfig.baseLinks.webhooks, label: "Webhooks" },
-  { href: siteConfig.baseLinks.settings, label: "Settings" },
+  { href: siteConfig.baseLinks.settings, label: "Configuración" },
 ]
 
 function isActive(pathname: string, href: string) {

@@ -61,7 +61,7 @@ function DropdownUserProfile() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
-          aria-label="open user menu"
+          aria-label="abrir menú de usuario"
           className={cx(
             focusRing,
             "group rounded-full p-1 hover:bg-subtle data-[state=open]:bg-subtle",
@@ -90,18 +90,18 @@ function DropdownUserProfile() {
               >
                 <DropdownMenuRadioItem value="light" iconType="check">
                   <RiSunLine className="size-4 shrink-0" aria-hidden="true" />
-                  Light
+                  Claro
                 </DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="dark" iconType="check">
                   <RiMoonLine className="size-4 shrink-0" aria-hidden="true" />
-                  Dark
+                  Oscuro
                 </DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="system" iconType="check">
                   <RiComputerLine
                     className="size-4 shrink-0"
                     aria-hidden="true"
                   />
-                  System
+                  Sistema
                 </DropdownMenuRadioItem>
               </DropdownMenuRadioGroup>
             </DropdownMenuSubMenuContent>
